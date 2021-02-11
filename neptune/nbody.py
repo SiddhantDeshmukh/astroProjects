@@ -16,7 +16,7 @@ class NbodySystem:
       self,
       input_file=None,
       N=1,
-      name=None,
+      names=None,
       masses="random",
       positions="random",
       velocities="random",
@@ -29,7 +29,7 @@ class NbodySystem:
     self.velocities = None
 
     self.eps = softening_length
-    self.dt_max = 1000
+    self.dt_max = 10000
     self.dt_min = 1
 
     # Initialise positions, velocities and accelerations of system
@@ -50,8 +50,8 @@ class NbodySystem:
     else:
       self.N = N
       for i in range(N):
-        if name is None:
-          name = f"body_{i+1}"
+        if names is None:
+          self.names.append(f"body_{i+1}")
 
         if masses == "random":
           self.masses[i] = np.random.random()
@@ -125,12 +125,9 @@ class NbodySystem:
 
       self.accelerations[i, :] = np.sum(forces, axis=0) / self.masses[i]
 
-  def leapfrog_step(self):  # leapfrog step
+  def leapfrog_step(self):
     # Kick half-timestep
     self.velocities += self.accelerations * self.dt / 2
-
-    # print("vel")
-    # print(new_velocities)
 
     # Drift full timestep
     self.positions += self.velocities * self.dt
@@ -142,7 +139,7 @@ class NbodySystem:
   def evolve(self, initial_time: float, final_time: float, ax):
     current_time = initial_time
     num_steps = 0
-    max_steps = 1000
+    max_steps = 10000
     while current_time <= final_time and num_steps < max_steps:
       if num_steps % 100 == 0:
         print(num_steps, current_time)
@@ -158,23 +155,22 @@ class NbodySystem:
     self.plot_trajectory(ax)
 
   def plot_trajectory(self, ax: plt.axes):  # x-y plane projection
-    # print(self.positions)
-    array = np.array(self.position_history)
-    print(array[:, 0, 0])
-
     for i in range(self.N):
       ax.scatter(np.array(self.position_history)[:, i, 0],
-                 np.array(self.position_history)[:, i, 1])
+                 np.array(self.position_history)[:, i, 1], s=1,
+                 label=self.names[i])
+
+    ax.legend()
 
 
 # =========================================================================
 # ESM system
 # =========================================================================
 if __name__ == "__main__":
-  esm_path = "./esm-input.csv"
+  esm_path = "./res/solar-system-input.csv"
   ESM_System = NbodySystem(input_file=esm_path)
 
   fig, axes = plt.subplots(1, 1, figsize=(4, 4))
   ESM_System.evolve(0., 1e10, axes)
 
-  plt.savefig('./test.png', bbox_inches="tight")
+  plt.savefig('./solar-system.png', bbox_inches="tight")
