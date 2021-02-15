@@ -139,7 +139,7 @@ class NbodySystem:
   def evolve(self, initial_time: float, final_time: float, ax):
     current_time = initial_time
     num_steps = 0
-    max_steps = 10000
+    max_steps = 1000000
     while current_time <= final_time and num_steps < max_steps:
       if num_steps % 100 == 0:
         print(num_steps, current_time)
@@ -164,13 +164,14 @@ class NbodySystem:
 
 
 # =========================================================================
-# ESM system
+# Nbody (gravitational) system
 # =========================================================================
 if __name__ == "__main__":
-  esm_path = "./res/solar-system-input.csv"
-  ESM_System = NbodySystem(input_file=esm_path)
+  input_dir = './res'
+  input_type = 'sun-earth-jupiter-uranus-neptune'
+  nbodySystem = NbodySystem(input_file=f"{input_dir}/{input_type}.csv")
 
   fig, axes = plt.subplots(1, 1, figsize=(4, 4))
-  ESM_System.evolve(0., 1e10, axes)
+  nbodySystem.evolve(0, 86400 * 365.25 * 84, axes)
 
-  plt.savefig('./solar-system.png', bbox_inches="tight")
+  plt.savefig(f'./figs/{input_type}.png', bbox_inches="tight")
