@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 # =========================================================================
 # Classes
 # =========================================================================
+
+
 class Parameters():
   # Defines parameters for simulation, such as potential and viscosity
   # terms, number of particles and smoothing length
@@ -32,12 +34,15 @@ class Simulation():
 # =========================================================================
 # Kernel functions and derivatives
 # =========================================================================
-def gaussian_kernel (x: np.ndarray, y: np.ndarray, z: np.ndarray, h: float):
+
+
+def gaussian_kernel(x: np.ndarray, y: np.ndarray, z: np.ndarray, h: float):
   # Gaussian smoothing kernel
-  r = np.sqrt(x**2+ y**2 + z**2)
+  r = np.sqrt(x**2 + y**2 + z**2)
   w = (1.0 / (h * np.sqrt(np.pi)))**3 * np.exp(-(r / h)**2)
 
   return w
+
 
 def gaussian_derivative(x: np.ndarray, y: np.ndarray, z: np.ndarray, h: float):
   # Gradient of gaussian_kernel()
@@ -59,26 +64,29 @@ def cubic_spline_kernel(x: np.ndarray, y: np.ndarray, z: np.ndarray, h: float):
 # =========================================================================
 # Density and pressure calculation
 # =========================================================================
+
+
 def get_pairwise_separations(ri: np.ndarray, rj: np.ndarray):
   # Calculate pairwise separations 'r_i - r_j'
   M = ri.shape[0]
   N = rj.shape[0]
 
   # Get x, y, z positions from ri and rj
-  rix = ri[:,0].reshape((M,1))
-  riy = ri[:,1].reshape((M,1))
-  riz = ri[:,2].reshape((M,1))
-  
-  rjx = rj[:,0].reshape((N,1))
-  rjy = rj[:,1].reshape((N,1))
-  rjz = rj[:,2].reshape((N,1))
-  
+  rix = ri[:, 0].reshape((M, 1))
+  riy = ri[:, 1].reshape((M, 1))
+  riz = ri[:, 2].reshape((M, 1))
+
+  rjx = rj[:, 0].reshape((N, 1))
+  rjy = rj[:, 1].reshape((N, 1))
+  rjz = rj[:, 2].reshape((N, 1))
+
   # matrices that store all pairwise particle separations: r_i - r_j
   dx = rix - rjx.T
   dy = riy - rjy.T
   dz = riz - rjz.T
-  
+
   return dx, dy, dz
+
 
 def get_density(r: np.ndarray, pos: np.ndarray, m: float, h: float):
   # 'r' is sampling locations, 'pos' is SPH particle positions
@@ -89,10 +97,12 @@ def get_density(r: np.ndarray, pos: np.ndarray, m: float, h: float):
   return rho
 
 # Should be a method of the 'Simulation()'
+
+
 def get_pressure(rho: np.ndarray, vel: np.ndarray, gamma=5/3,
                  k=None, n=None):
-  if k is not None and n is not None: # Polytropic EOS
-    P  = k * rho**(1 + 1 / n)
+  if k is not None and n is not None:  # Polytropic EOS
+    P = k * rho**(1 + 1 / n)
 
   else:  # ideal gas EO
     P = (gamma - 1) * rho * vel
@@ -102,6 +112,8 @@ def get_pressure(rho: np.ndarray, vel: np.ndarray, gamma=5/3,
 # =========================================================================
 # Acceleration calculations
 # =========================================================================
+
+
 def get_acceleration(pos: np.ndarray, vel: np.ndarray, m: float, h: float,
                      k: float, n: float, potential: float, nu: float):
   N = pos.shape[0]
@@ -131,6 +143,8 @@ def get_acceleration(pos: np.ndarray, vel: np.ndarray, m: float, h: float,
 # =========================================================================
 # Energy calculations
 # =========================================================================
+
+
 def get_internal_energy(pressure: np.ndarray, rho: np.ndarray, mass: float, n=1):
   gamma_idx = 1 + 1 / n
   energy = np.mean(pressure / (rho * mass)) / (gamma_idx - 1)
@@ -140,6 +154,8 @@ def get_internal_energy(pressure: np.ndarray, rho: np.ndarray, mass: float, n=1)
 # =========================================================================
 # Time integration schemes
 # =========================================================================
+
+
 def leapfrog_step(vel: np.ndarray, pos: np.ndarray, acc: np.ndarray,
                   dt: float, pars: Parameters):
   # half-timestep kick
@@ -149,12 +165,14 @@ def leapfrog_step(vel: np.ndarray, pos: np.ndarray, acc: np.ndarray,
   pos += vel * dt
 
   # update accelerations
-  acc = get_acceleration(pos, vel, pars.m, pars.h, pars.gamma, pars.pot, pars.nu)
+  acc = get_acceleration(pos, vel, pars.m, pars.h,
+                         pars.gamma, pars.pot, pars.nu)
 
   # half-timestep kick
   vel += acc * dt / 2
 
   return pos, vel, acc
+
 
 # =========================================================================
 # Main loop
@@ -163,7 +181,7 @@ if __name__ == "__main__":
   # Simulation parameters for star formation
   N = 400  # number of particles
   t = 0  # current sim time
-  t_end = 12 # final sim time
+  t_end = 12  # final sim time
   dt = 0.04  # timestep
   M = 2  # total sim mass (all stars)
   R = 0.75  # sim radius start (cloud radius)
@@ -175,11 +193,12 @@ if __name__ == "__main__":
   # Initial conditions
   np.random.seed(42)
 
-  potential = 2 * k * (1 + n) * np.pi**(-3/(2*n)) * (M * gamma(5/2 + n) / R**3 / gamma (1 + n))** (1 / n)  / R**2  # ~2.01
+  potential = 2 * k * (1 + n) * np.pi**(-3/(2*n)) * (M *
+                                                     gamma(5/2 + n) / R**3 / gamma(1 + n)) ** (1 / n) / R**2  # ~2.01
   m = M / N  # single star mass
   pos = np.random.randn(N, 3)  # random positions and velocities
   vel = np.zeros(pos.shape)
-  
+
   # Initial accelerations, densities, pressures
   acc = get_acceleration(pos, vel, m, h, k, n, potential, nu)
   rho = get_density(pos, pos, m, h)
@@ -206,19 +225,19 @@ if __name__ == "__main__":
   for i in range(num_timesteps):
     # (1/2) kick
     vel += acc * dt/2
-    
+
     # drift
     pos += vel * dt
-    
+
     # update accelerations
     acc = get_acceleration(pos, vel, m, h, k, n, potential, nu)
-    
+
     # (1/2) kick
     vel += acc * dt/2
-    
+
     # update time
     t += dt
-    
+
     # get density for plotting
     rho = get_density(pos, pos, m, h)
 
@@ -238,7 +257,8 @@ if __name__ == "__main__":
       plt.sca(ax1)
       plt.cla()
       cval = np.minimum((rho - 3) / 3, 1).flatten()
-      ax1.scatter(pos[:, 0], pos[:, 1], c=cval, cmap=plt.cm.autumn, s=10, alpha=0.5)
+      ax1.scatter(pos[:, 0], pos[:, 1], c=cval,
+                  cmap=plt.cm.autumn, s=10, alpha=0.5)
       ax1.set(xlim=(-1.4, 1.4), ylim=(-1.2, 1.2))
       ax1.set_aspect('equal', 'box')
       ax1.set_xticks([-1, 0, 1])
@@ -261,7 +281,8 @@ if __name__ == "__main__":
 
       plt.suptitle(f"N = {N}, t = {t:0.2f}")
 
-      plt.savefig(f'./figs/frames-star/sph-{str(i).zfill(3)}.png', dpi=240, bbox_inches="tight")
+      plt.savefig(
+          f'./figs/frames-star/sph-{str(i).zfill(3)}.png', dpi=240, bbox_inches="tight")
 
   # Check energy conservation (plot)
   fig, axes = plt.subplots(figsize=(4, 4))
