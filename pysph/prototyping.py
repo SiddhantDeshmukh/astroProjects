@@ -222,7 +222,7 @@ if __name__ == "__main__":
 
   # Evolve through time
   num_timesteps = int(np.ceil(t_end / dt))
-  for i in range(num_timesteps):
+  for i in range(1):
     # (1/2) kick
     vel += acc * dt/2
 
@@ -290,4 +290,5 @@ if __name__ == "__main__":
   axes.axhline(initial_energy, color='k')
   axes.set_xlabel("Time")
   axes.set_ylabel("Internal Energy")
-  plt.savefig('./figs/energy.png', bbox_inches="tight")
+  # plt.savefig('./figs/energy.png', bbox_inches="tight")
+  plt.show()
