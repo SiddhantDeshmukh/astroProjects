@@ -30,7 +30,8 @@ project is not directly related to the primary objective of the thesis
 (concerning chemical evolution and equilibrium in stellar atmospheres),
 focus has shifted towards the thesis in recent months. Preliminary models
 investigating chemical evolution in a solar and metal-poor atmosphere have
-been computed, and the scope for publication should be made clear mid-April
+been computed, and the scope for publication on early results of chemical
+analysis should be made clear mid-April
 2021 as well. Immediate goals are to compare a full chemical evolution to
 a ``post-processing'' evolution (where the chemistry is evolved from
 pre-computed model snapshots), implement the chemical evolution code KROME

@@ -41,5 +41,5 @@ end
 
 prob = SDEProblem(f, g, u0, tspan, params)
 sol = solve(prob, dt=1/2^4)
-plot(sol, titlte="SDE")
+plot(sol, title="SDE")
 plot(sol, title="Phase Diagram - SDE", vars=(1,2))

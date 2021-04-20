@@ -2,7 +2,7 @@
 from scipy.io import readsav
 import matplotlib.pyplot as plt
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF
+from sklearn.gaussian_process.kernels import ConstantKernel, RBF, ExpSineSquared, WhiteKernel
 import numpy as np
 
 # Interested in
@@ -22,81 +22,69 @@ teff, logg, moh = data.teff[12:44], data.logg[12:44], data.moh[12:44]
 
 # Creating training data
 # Fit 'h1' and 'h2' separately using 'teff', 'logg', 'moh'
-X_train = np.vstack((teff, logg, moh)).T  # shape (n_samples, n_features)
+X = np.vstack((teff, logg, moh)).T  # shape (n_samples, n_features)
+h1_kernel = RBF(length_scale=1) + WhiteKernel(1e-1)
+gp_h1 = GaussianProcessRegressor(kernel=h1_kernel)
+gp_h1.fit(X, h1)
+h1_pred, h1_std = gp_h1.predict(X, return_std=True)
 
-X_train, X_pred = X_train[:25], X_train[25:]
-h1_train, h1_pred = h1[:25], h1[25:]
+h2_kernel = RBF(length_scale=1) + WhiteKernel(1e-1)
+gp_h2 = GaussianProcessRegressor(kernel=h2_kernel)
+gp_h2.fit(X, h2)
+h2_pred, h2_std = gp_h2.predict(X, return_std=True)
 
-print(X_train.shape)
+print(h1_std, h2_std)
+
+fig, axes = plt.subplots(1, 1)
+axes.errorbar(h1, h2, xerr=sh1, yerr=sh2, fmt='k.', label="Data")
+axes.plot(h1_pred, h2_pred, 'r-', label="GP fits")
+axes.fill_between(h1, h2_pred - h2_std, h2_pred +
+                  h2_std, color='darkorange')
+
 # %%
-# Plot the data
-fig, axes = plt.subplots(2, 2, figsize=(10, 6), sharey=False)
+# Let's just try a random example
+# Sample data with noise
+rng = np.random.RandomState(42)
+X = 15 * rng.rand(100, 1)
+y1 = np.sin(X).ravel()
+y2 = np.cos(X).ravel()
 
-# Effective temperature
-axes[0][0].plot(teff, h1, '.')
-axes[0][0].set_xlabel(r"T$_\mathrm{eff}$")
-axes[0][0].set_ylabel(r"h1")
+y1 += 3 * (0.5 - rng.rand(X.shape[0]))
+y2 += 2 * (0.1 - rng.rand(X.shape[0]))
 
-# Surface gravity
-axes[0][1].plot(logg, h1, '.')
-axes[0][1].set_xlabel(r"$\log{g}$")
-axes[0][0].set_ylabel(r"h1")
+targets = np.vstack((y1, y2)).T
+print(targets.shape)
 
-# Metallicity
-axes[1][0].plot(moh, h1, '.')
-axes[1][0].set_xlabel("[M/H]")
-axes[0][0].set_ylabel(r"h1")
+# GP Regressor
+gp_kernel = ExpSineSquared(1., 5.0, periodicity_bounds=(1e-2, 1e1)) +  \
+    WhiteKernel(1e-1)
+gpr = GaussianProcessRegressor(kernel=gp_kernel)
+gpr.fit(X, targets)
+X_plot = np.linspace(0, 15, 1000).reshape(-1, 1)
+X = np.sort(X, axis=0)
+h1_pred, y_std = gpr.predict(X, return_std=True)
 
-# h1 vs h2
-axes[1][1].errorbar(data.h1[12:44], data.h2[12:44],
-                    yerr=data.sh2[12:44], xerr=data.sh1[12:44], fmt='x')
+fig, axes = plt.subplots(1, 2)
+axes[0].plot(X, y1, 'k.', label="Data")
+axes[0].plot(X_plot, np.sin(X_plot), 'b-', label="True")
+axes[0].plot(X, h1_pred[:, 0], 'r-', label="GP Fit")
+axes[0].fill_between(X[:, 0], h1_pred[:, 0] - y_std,
+                     h1_pred[:, 0] + y_std, color='darkorange', alpha=0.2)
 
-axes[1][1].set_xlabel("h1")
-axes[1][1].set_ylabel("h2")
-# %%
-# Gaussian process regression
-kernel = RBF(1.0, (1e-2, 1e-2))
-gp_regressor = GaussianProcessRegressor(
-    kernel=kernel, n_restarts_optimizer=9)
-gp_regressor.fit(X_train, h1_train)
+axes[0].set_title("sin")
+axes[0].legend()
 
-y_pred, sigma = gp_regressor.predict(X_pred, return_std=True)
+axes[1].set_title("cos")
+axes[1].plot(X, y1, 'k.', label="Data")
+axes[1].plot(X_plot, np.cos(X_plot), 'b-', label="True")
+axes[1].plot(X, h1_pred[:, 1], 'r-', label="GP Fit")
+axes[1].fill_between(X[:, 0], h1_pred[:, 1] - y_std,
+                     h1_pred[:, 1] + y_std, color='darkorange', alpha=0.2)
 
-# Plot fit
-fig, axes = plt.subplots(2, 2, sharey=True)
+axes[1].legend()
 
-axes[0][0].plot(h1_train, '.')
-axes[0][0].plot(gp_regressor.predict(X_train))
-axes[0][0].set_xlabel("Training instance")
-axes[0][0].set_ylabel("h1")
-
-# vs temperature
-x = teff[25:]
-axes[0][1].plot(x, h1_pred, '.')
-axes[0][1].plot(x, y_pred)
-axes[0][1].set_xlabel("Temperature")
-# axes[0][1].fill(np.concatenate([x, x[::-1]]),
-#                 np.concatenate([y_pred - 1.9600 * sigma,
-#                                 (y_pred + 1.9600 * sigma)[::-1]]),
-#                 alpha=.5, fc='b', ec='None', label='95% confidence interval')
-
-# vs logg
-x = logg[25:]
-axes[1][0].plot(x, h1_pred, '.')
-axes[1][0].plot(x, y_pred)
-axes[1][0].set_xlabel("Surface gravity")
-# axes[1][0].fill(np.concatenate([x, x[::-1]]),
-#                 np.concatenate([y_pred - 1.9600 * sigma,
-#                                 (y_pred + 1.9600 * sigma)[::-1]]),
-#                 alpha=.5, fc='b', ec='None', label='95% confidence interval')
-
-# vs metallicity
-x = moh[25:]
-axes[1][1].plot(x, h1_pred, '.')
-axes[1][1].plot(x, y_pred)
-axes[1][1].set_xlabel("[M/H]")
-# axes[1][1].fill(np.concatenate([x, x[::-1]]),
-#                 np.concatenate([y_pred - 1.9600 * sigma,
-#                                 (y_pred + 1.9600 * sigma)[::-1]]),
-#                 alpha=.5, fc='b', ec='None', label='95% confidence interval')
-# %%
+fig = plt.figure()
+ax2 = fig.add_subplot(111, projection='3d')
+ax2.scatter(X, y1, y2, 'k.')
+ax2.plot(X_plot[:, 0], np.sin(X_plot[:, 0]), np.cos(X_plot[:, 0]), 'b-')
+ax2.plot(X[:, 0], h1_pred[:, 0], h1_pred[:, 1], 'r-')
