@@ -1,0 +1,356 @@
+fileform uio form=formatted convert=ieee_4 date='14.03.2001' &
+  program='by hand'
+
+character file_id f=A80 b=80 n='File identification'
+rhd-parameter
+
+character description d=(1:3) f=A80 p=1 b=80 n='File description'
+5900K, logg=4.00, [M/H]=-2.0 model         
+started 18.01.2008                         
+nodragforce                                
+
+character history d=(1:1) f=A80 p=1 b=80 n='File history'
+Parameter file for COBOLD code: Mon. Jan. 22, 2007
+
+label comment c0='--- Global model parameters -------------------------------' &
+  c1='-----------------------------------------------------------------------'
+real teff f=F13.3 b=4 n='Effective Temperature' u=K &
+          c0='standard solar value'
+ 5900.0                                    
+character grav_mode f=A80 b=80 n='Type of gravity field' &
+  c0='constant/central'
+constant
+character gravcorr_terms f=A80 b=80 &
+  n='Type of gravity correction in Roe solver' &
+  c0='off0/off1/default0/default/default2'
+default2
+real grav      f=E15.8 b=4 n='Gravity'          u=cm/s^2 &
+  c0='standard solar value: log10(grav)=4.44 (27500.0)'
+ 10000.0                                   
+real mass_star f=E15.8 b=4 n='Stellar Mass'     u=g
+ 0.0
+real r0_grav   f=E15.8 b=4 n='Offset Radius'    u=g
+ 1.0
+
+label comment c0='--- Boundary conditions -----------------------------------' &
+  c1='-----------------------------------------------------------------------'
+character side_bound   f=A80 b=80 n='side boundary conditions'
+periodic
+character top_bound    f=A80 b=80 n='top boundary conditions'
+transmitting
+character bottom_bound f=A80 b=80 n='bottom boundary conditions'
+inoutflow
+real s_inflow f=E15.8 b=4 n='Entropy of material flowing into the model' &
+  u=erg/K/g c0='or core entropy'
+ 1.767E+09                                 
+real c_schange f=E15.8 b=4 n='Rate of entropy change for open lower boundary' &
+                           u=1
+ 0.1
+real c_pchange f=E15.8 b=4 n='Rate of pressure change for open lower boundary' &
+                           u=1
+ 0.3
+real c_tchange f=E15.8 b=4 u=1 &
+                        n='Rate of temperature change for open upper boundary'
+ 0.3
+real c_tsurf f=E15.8 b=4  n='Temperature factor for open upper boundary' u=1 &
+  c0='0.81 for grey atmosphere' &
+  c1='0.73 for solar atmosphere'
+ 0.5                                       
+real c_hptopfactor f=E15.8 b=4 &
+  n='Correction factor for surface pressure scale height' u=1
+1.0
+real rho_min f=E15.8 b=4 n='Minimum boundary density' u=g/cm^3
+ 1.0E-25
+
+label comment c0='--- Equation of state -------------------------------------' &
+  c1='-----------------------------------------------------------------------'
+real abux f=E15.8 b=4 n='hydrogen abundance (number fraction)' u=1 &
+              c0='standard solar mixture'
+ 0.9215449                                 
+real abuy f=E15.8 b=4 n='helium abundance (number fraction)'   u=1 &
+          c0='standard solar mixture'
+ 7.8436248E-02                             
+real qmol f=E15.8 b=4 n='mean molecular weight'                u=u &
+          c0='standard solar mixture'
+ 1.243208                                  
+real gamma f=E15.8 b=4 n='Adiabatic coefficient'               u=1 &
+          c0='0.0/1.6666666666666/1.4'
+ 0.0
+character eosfile f=A80 b=80 n='EOS file name' &
+  c0=eos_gamma140.eos/eos_mm00.eos
+eos_cifist2006_m20_a04_l5.eos              
+character eospath f=A80 b=80 n='path of EOS file' &
+  c0=/astro/b/bf/eos/dat &
+  c1=/karldata/home2/supas024/eos/dat &
+  c2=/home/supas024/eos/dat &
+  c3=/stpu/bfr/eos/dat
+/home/sd/eos/                         
+
+label comment c0='--- Opacities ---------------------------------------------' &
+  c1='-----------------------------------------------------------------------'
+character opafile f=A80 b=80 n='opacity file name' c0=g2va.opta/big_grey.opta &
+  c1='empty -> no radiation transport'
+t6000g400mm20_marcs_idmean3xRT3.opta       
+character opapath f=A80 b=80 n='path of opacity file' &
+  c0=/astro/b/bf/opa/dat &
+  c1=/karldata/home2/supas024/opa/dat &
+  c2=/home/supas024/opa/dat &
+  c3=/stpu/bfr/opa/dat
+/home/sd/opta
+
+label comment c0='--- Hydrodynamics control ---------------------------------' &
+  c1='-----------------------------------------------------------------------'
+integer n_hydcellsperchunk f=I9 b=4 &
+  n='Number of cells per hydro chunk' &
+  c0='0 => one 2D slice at a time' &
+  c1='1 => minimum chunk size (inefficient)' &
+  c2='10000: reasonable value' &
+  c3='1000000000: maximum chunk size (inefficient and memory intensive)'
+7000
+integer n_viscellsperchunk f=I9 b=4 &
+  n='Number of cells per viscosity chunk' &
+  c0='0 => old chopping' &
+  c1='10000: reasonable value'
+7000
+character hdscheme f=A80 b=80 n='Hydrodynamics scheme' &
+  c0='Roe (approximate Riemann solver of Roe type)' &
+  c1='VanLeer (operator splitting: advection + source terms)' &
+  c2='None (skip hydrodynamics step entirely)'
+Roe
+character reconstruction f=A80 b=80 n='Reconstruction method' &
+  c0=Constant c1=Minmod/VanLeer/Superbee c2=PP
+HBweno
+character dustreconstruction f=A80 b=80 n='Source-term reconstruction method' &
+ c0=Constant c1=Minmod/VanLeer/Superbee c2=PPmimo/PP &
+ c3=FRmono
+FRmimo
+real c_visneu1 f=E15.8 b=4 &
+    n='Linear viscosity parameter (von Neumann-Richtmyer type)'   u=1
+0.0
+real c_visneu2 f=E15.8 b=4 &
+    n='Quadratic viscosity parameter (von Neumann-Richtmyer type)' u=1
+0.0
+real c_visdrag f=E15.8 b=4 &
+    n='Drag viscosity parameter' u=1
+0.000
+real c_visbound f=E15.8 b=4 &
+    n='Boundary drag viscosity parameter' u=1
+0.0
+
+label comment c0='--- Radiation transport control ---------------------------' &
+  c1='-----------------------------------------------------------------------'
+character radscheme f=A80 b=80 n='Radiation transport scheme' &
+  c0='LHDrad' &
+  c1='MSrad' &
+  c2='None (skip radiation transport step entirely)'
+MSCrad
+integer n_radminiter f=I4 b=4 &
+        n='Minimum number of radiation transport iterations' &
+        c0=8
+1
+integer n_raditer f=I4 b=4 n='Number of radiation transport iterations' c0=14
+5
+integer n_radmaxiter f=I4 b=4 n='Maximum number of rad. transport iterations' &
+  c0=30
+20
+integer n_radtaurefine f=I4 b=4 n='Grid refinement factor (large dT)' &
+  c0='1: no refinement, 3: reasonable value'
+3
+integer n_radthickpoint f=I4 b=4 &
+  n='Number of grid points with optically thick (diffusion) approximation' &
+  c0='0: no diffusion approximation'
+ 50                                        
+integer n_radtheta f=I4 b=4 n='NTHETA: Number of ray sets in theta direction' &
+  c0=2
+2
+integer n_radphi f=I4 b=4 n='NPHI: Number of ray sets in phi direction' c0=2
+2
+integer n_radsubray f=I4 b=4 n='KPHI: Number of rays per cell' c0=2
+1
+integer n_radband f=I4 b=4 n='Number of frequency bins' &
+  c0='1: grey opacities' &
+  c1='2: non-grey opacities (if available from table)'
+2
+real c_radimplicitmu f=E15.8 b=4 &
+    n='Implicitness parameter for radiation transport'            u=1 &
+    c0='0.0: explicit / 0.5: time centered / 1.0: fully implicit'
+0.0
+real c_raditereps f=E15.8 b=4 &
+    n='Relative accuracy for radiation iteration'                 u=1 &
+    c0='Typical value: 1.0E-05'
+2.0E-05
+real c_raditerstep f=E15.8 b=4 &
+    n='Step size of radiation iteration'                          u=1 &
+    c0='Typical value: 0.81'
+0.81
+real c_radkappasmooth f=E15.8 b=4 n='Opacity smoothing parameter' u=1 &
+    c0='0.0: no smoothing, 0.25: light smoothing, 0.666: strong smoothing'
+0.0
+real c_radtstep f=E15.8 b=4 n='Temperature interpolation parameter' u=1 &
+    c0='0.0: no interpolation, 8.0: reasonable value, 20.0: large value'
+8.0
+real c_radtsmooth f=E15.8 b=4 n='Temperature smoothing parameter' u=1 &
+    c0='0.0: no smoothing, 0.5: reasonable smoothing, 1.0: max. smoothing'
+0.0
+real c_radhtautop f=E15.8 b=4 n='Scale height of optical depth at top' u=cm
+200.0E+5                                   
+character radraybase f=A80 b=80 n='Base axis system' &
+  c0='unity/random'
+lobatto
+character radraystar f=A80 b=80 n='List of relative ray directions' &
+  c0='x1(1)/x2(1)/x3(1)/oktaeder(3)/tetraeder(4)/cube(4)' &
+  c1='ikosaeder(6)/dodekaeder(10)'
+oktaeder
+character radpressure f=A80 b=80 n='Radiation pressure mode' &
+  c0='on/off'
+off
+
+label comment c0='--- Artificial viscosity tensor control -------------------' & 
+  c1='-----------------------------------------------------------------------'
+real c_vissmagorinsky f=E15.8 b=4 &
+    n='Turbulent eddy viscosity parameter (Smagorinsky type)'     u=1
+1.0
+real c_visartificial f=E15.8 b=4 &
+    n='Artificial viscosity tensor parameter'                     u=1
+0.0
+real c_visprturb f=E15.8 b=4 &
+    n='Turbulent Prandtl number'                                  u=1
+4.0
+real c_vistensordiag f=E15.8 b=4 &
+    n='Diagonal factor for viscous stress tensor'                 u=1 &
+    c0='typically 1.0
+1.0
+real c_vistensoroff f=E15.8 b=4 &
+    n='Off-diagonal factor for viscous stress tensor'             u=1 &
+    c0='typically 0.5
+0.5
+real c_vistensordiv f=E15.8 b=4 &
+    n='Divergence factor for viscous stress tensor'               u=1 &
+    c0='typically -0.33333333333333
+0.0
+
+label comment c0='--- Time management ---------------------------------------' &
+  c1='-----------------------------------------------------------------------'
+real starttime f=E15.8 b=4 n='start time'                              u=s
+-1.0
+integer starttimestep f=I11 b=4 n='start time step'                    u=1
+-1
+real cputime f=E15.8 b=4 n='CPU time'                                  u=s
+-1.0
+real cputime_remainlimit f=E15.8 b=4 n='maximum remaining CPU time'    u=s
+-1.0
+real endtime f=E15.8 b=4 n='total simulation time limit'               u=s
+-1.0
+real plustime f=E15.8 b=4 n='simulation advance time'                  u=s
+2000.0                                      
+integer endtimestep f=I11 b=4 n='total simulation time step number'    u=1
+-1
+integer plustimestep f=I11 b=4 n='simulation advance time step number' u=1
+-1
+
+label comment c0='--- Time step management ----------------------------------' & 
+  c1='-----------------------------------------------------------------------'
+real dtime_min f=E15.8 b=4 n='Minimum time step'                       u=s &
+  c0='dtime_min=0.0 => no restriction'
+0.0
+real dtime_max f=E15.8 b=4 n='Maximum time step'                       u=s &
+  c0='dtime_max=0.0 => no restriction'
+1.0E+03
+real dtime_min_stop f=E15.8 b=4 n='Minimum time step'                  u=s &
+  c0='dtime_min_stop=0.0 => no restriction' &
+  c1='dtime < dtime_min_stop => program stop'
+1.0E-03
+real dtime_incmax f=E15.8 b=4 n='Maximum time step increment factor'   u=1 &
+  c0='dtime_max<1.0 => no restriction' c1='typically 1.1'
+1.2
+real dtime_start f=E15.8 b=4 n='Initial time step'                      u=s &
+  c0='dtime_start <= 0.0 => use value from start file'
+0.0
+real c_courant f=E15.8 b=4 n='HD Courant factor'                       u=1 &
+  c0='range: 0.0 < C_Courant <= 1.0, typically: 0.5'
+ 0.7
+real c_courantmax f=E15.8 b=4 n='maximum HD Courant factor'            u=1 &
+  c0='range: C_Courant < C_Courantmax <= 1.0, typically: 0.9'
+ 1.0
+real c_maxeichange f=E15.8 b=4 n='maximum hydro energy change'         u=1 &
+  c0='range: 0.1 - 1.0, typically 0.5, off:0.0'
+ 0.0
+real c_radcourant f=E15.8 b=4 n='RAD Courant factor'                   u=1 &
+  c0='range: 0.0 < C_radCourant, typically: 1.0'
+ 0.9
+real c_radcourantmax f=E15.8 b=4 n='maximum RAD Courant factor'        u=1 &
+  c0='range: C_radCourant <= C_radCourantmax, typically: 2.0'
+ 1.5
+real c_radmaxeichange f=E15.8 b=4 n='maximum radiative energy change'  u=1 &
+  c0='range: 0.01 - 1.0'
+ 0.40
+real c_viscourant f=E15.8 b=4 n='viscous Courant factor'               u=1 &
+  c0='range: 0.0 < C_visCourant, typically: 1.0'
+ 0.5
+real c_viscourantmax f=E15.8 b=4 n='maximum viscous Courant factor'    u=1 &
+  c0='range: C_visCourant <= C_visCourantmax, typically smaller than 2.0'
+ 1.0
+
+label comment c0='--- Input/Output ------------------------------------------' &
+  c1='-----------------------------------------------------------------------'
+real dtime_out_full f=E15.8 b=4 n='Output time step'                   u=s &
+  c0='dtime_out_full < 0.0 => no output' &
+  c1='dtime_out_full = 0.0 => output every time step'
+50.0                                      
+real dtime_out_mean f=E15.8 b=4 n='Output time step'                   u=s &
+  c0='dtime_out_mean<0.0 => no output'
+50.0                                       
+integer dtimestep_out_fine f=I4 b=4 n='Output time step number'        u=1 &
+  c0='dtimestep_out_fine<0 => no output'
+1
+
+character infile_start f=A80 b=80 n='File name of start model'
+rhd.start
+character outfile_end f=A80 b=80 n='Output file name'
+rhd.end
+character outfile_fine f=A80 b=80 n='Output file name'
+rhd.fine
+character outfile_full f=A80 b=80 n='Output file name'
+rhd.full
+character outfile_mean f=A80 b=80 n='Output file name'
+rhd.mean
+
+character outform_end f=A80 b=80 n='Output file format' &
+  c0='formatted/unformatted'
+unformatted
+character outconv_end f=A80 b=80 n='Output file conversion' &
+  c0='ieee_4/ieee_8/crayxmp_8/native'
+ieee_4
+character outform_full f=A80 b=80 n='Output file format'
+unformatted
+character outconv_full f=A80 b=80 n='Output file conversion'
+ieee_4
+
+character outform_mean f=A80 b=80 n='Output file format'
+unformatted
+character outconv_mean f=A80 b=80 n='Output file conversion'
+ieee_4
+character outform_fine f=A80 b=80 n='Output file format'
+formatted
+character outconv_fine f=A80 b=80 n='Output file conversion'
+ieee_4
+
+label comment c0='--- Molecule chemistry ------------------------------------' &
+  c1='-----------------------------------------------------------------------'
+
+character dustscheme f=A80 b=80 n='Dust model' &
+  c0='none (default), nosource, dust_simple_01, co_component01_01' &
+  c1='dust_k3mon_01, dust_k3mon_02' &
+  c2='co_component02' &
+  c3='chemreacnet' &
+  c4='krome'
+krome
+
+real c_dust01 f=E15.8 b=4 n='Chem parameter 1: advection on/off' &
+  c0='0.0: advection off' &
+  c1='1.0: advection on'
+1.0
+
+integer n_test1 f=I4 b=4 n='number of all chemical species (quc arrays)'
+8
+
