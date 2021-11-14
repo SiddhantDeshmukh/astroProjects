@@ -23,11 +23,13 @@ prob = ODEProblem(f, u0, tspan, params);
 sol = solve(prob);
 
 # Plot solution using plot recip (Plotly backend)
-plot(sol, title = "All Plots.jl Attributes are Available")
+plot(sol)
 
 # Plot phase diagram
 plot(sol, title = "Phase Diagram", vars = (1, 2))
 
+##
+# SDE
 g = function (du, u, p, t)
   # x' = 0.5x
   # y' = 0.1y
@@ -38,4 +40,4 @@ end
 prob = SDEProblem(f, g, u0, tspan, params)
 sol = solve(prob, dt = 1 / 2^4)
 plot(sol, title = "SDE")
-plot(sol, title = "Phase Diagram - SDE", vars = (1, 2))
+# plot(sol, title = "Phase Diagram - SDE", vars = (1, 2))

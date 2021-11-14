@@ -1,0 +1,3098 @@
+#!/bin/bash
+#
+#---------------------------------------------------------------------------------------------------
+# NAME:
+#   configure
+#
+# SYNOPSIS:
+#   ./configure [-ch]
+#
+# DESCRIPTION:
+#   Generate architecture- and compiler-dependent Makefile for CO5BOLD executable.
+#
+# OPTIONS:
+#   -c: Activate color in screen output
+#   -h: Print help and exit
+#
+# ENVIRONMENT:
+#   List of control environment variables:
+#   F90_COLOR:     Switch on color output of configure script ('on', 'On', '1', 'yes') without
+#                  effect on Makefile
+#   F90_COMPILER:  Fortran compiler (default is chosen individually for each architecture)
+#                    'f90':      general default (but hardly existing, anymore)
+#                    'g95':      G95 compiler (also GNU, but not quite)
+#                    'gfortran': GNU compiler
+#                    'ifort':    Intel compiler
+#                    'openf90':  Open64 compiler
+#                    'pathf90':  Pathscale compiler
+#                    'pgf90':    PGI/NVidia compiler
+#                    'xlf90':    IBM compiler
+#                    'xlf90_r':  IBM compiler (for executables with OpenMP)
+#   F90_PREFLAGS:  Compiler flags to be put at the beginning of the list, e.g.
+#                  '-r8':        to force compilation in double precision with the Intel compiler
+#                                (for everything except UIO)
+#                  '-fdefault-real-8 -fdefault-double-8': to force compilation in double precision
+#                                with the gfortran compiler (for everything except UIO)
+#   F90_POSTFLAGS: Compiler flags to be put at the end of the list
+#   F90_PARALLEL:  Parallelization
+#                    'scalar':     no parallelization (default)
+#                    'openmp':     OpenMP
+#                    'mpi':        MPI (under construction)
+#                    'mpi,openmp': hybrid MPI+OpenMP (under construction)
+#                    'auto':       auto-parallelization (not implemented for all machines)
+#   F90_DEBUG:     Debugging level
+#                    '0':      no extra debugging information produced,
+#                              full optimization is chosen (default)
+#                    '1':      debugging mode (typically switch '-g' instead of '-fast')
+#                    '2', '3': other debbuging (or array checking) modes possible if
+#                              implemented for the requested machine
+#   F90_OPTIMIZE:     Optimization level
+#                    '0':      no explicit optimization (default if F90_DEBUG=1)
+#                    '1':      try to find automatically sensible optimization flags. That's the
+#                              default if F90_DEBUG=0
+#                    '2':      other optimization if implemented for the requested machine
+#                    '-prettyfast': Just an example: flags can be specified explicitely, e.g.,
+#                                F90_OPTIMIZE="-fast -ipo",
+#                              or, for example for the Intel compiler
+#                                F90_OPTIMIZE="-O3 -ipo -xHost -static-intel -qoverride-limits -W0"
+#   F90_LHDRAD:    LHDrad radiation transport
+#                    '0': do not activate (compile and link) this module (default)
+#                    '1': activate this radiation transport module
+#   F90_MSRAD:     MSrad radiation transport
+#                    '0': do not activate (compile and link) these modules (default)
+#                    '1': activate this radiation transport module
+#   F90_SHORTRAD:  SHORTrad radiation transport
+#                    '0': do not activate (compile and link) this module (default)
+#                    '1': activate this radiation transport module
+#   F90_DUST:      DUST module
+#                    '0': do not activate (compile and link) the dust module (default)
+#                    '1': activate the dust source term module (also required for CHEM module)
+#   F90_CHEM:      CHEM module
+#                    '0': do not activate (compile and link) the chemistry module (default)
+#                    '1': activate the chemistry source term module
+#   F90_KROME:     KROME module
+#                    '0': do not activate (compile and link) the chemistry KROME module (default)
+#                    '1': activate the chemistry KROME module
+#   F90_HION:      HION module
+#                    '0': do not activate (compile and link) the hydrogen ionization module
+#                        (default)
+#                    '1': activate the hydrogen ionization source term module
+#   F90_MHD:       MHD module
+#                    '0': do not activate (compile and link) the magnetic field module (default)
+#                    '1': activate the module to handle magnetic fields
+#   F90_TWEAK:     Tweak module
+#                    '0': do not activate (compile and link) the general purpose module (default)
+#                    '1': activate the general purpose module
+#   F90_UNITTEST   Unit testing (only for rhdut.exe, irrelevant for rhd.exe)
+#                    '0': activate no individual unit-test module (default for compiling rhd.exe)
+#                    '1': activate all individual unit-test modules
+#                    'rhd_baseradUT_module'     : activate this module
+#                    'rhd_boxUT_module'         : activate this module
+#                    'rhd_meanUT_module'        : activate this module
+#                    'dust_Al2O3AGBUT_module'   : activate this module
+#                    'dust_Mg2SiO4AGBUT_module' : activate this module
+#                    'rhd_recUT_module'         : activate this module
+#                    'strUT_module'             : activate this module
+#                    'rhd_recUT_module rhd_baseradUT_module': activate both modules, and so on
+#   F90_MACHINE:   Explicit machine specification (usually not necessary, use 'local' or '' instead)
+#                    'sv1':    Cray SV1 (craSHi)
+#                    'alpha':  DECalpha
+#                    'SR8000': Hitachi
+#                    '9000*':  HP 9000
+#                    'ia64':   HP ia64 (Itanium)
+#                    'i686':   Pentium/Athlon (PGI or Intel compiler), tested for some models only
+#                      'i686   (AMD Athlon)':  AMD Athlon
+#                      'i686   (Pentium III)': Intel Pentium III
+#                      'i686   (Intel Xeon)':  Intel Xeon
+#                    'i86_64': Intel Core/AMD Opteron
+#                      'i86_64 (AMD Opteron)': AMD Opteron
+#                      'i86_64 (Intel Core)':  Intel Core
+#                      'i86_64 (Intel Core2)': Intel Core 2
+#                    'SX-5':   NEC SX-5 
+#                    'SX-6':   NEC SX-6
+#                    'SX-8':   NEC SX-8
+#                    'sgi':    SGI
+#                    'sun4u':  Sun
+#                    ---------
+#                    'local':  local machine (default)
+#                    'dummy':  Do not use any machine dpedendent flags but use module selections
+#                    'empty':  Compiler flags are composed from F90_PREFLAGS and F90_POSTFLAGS only
+#                  The information about the machine name for the i686 architecture comes
+#                  from a command
+#                    cat /proc/cpuinfo | grep "model name"
+#                  This string gives somewhat arbitrary information. It has to be checked for
+#                  new precessor models.
+#   F90_BASEPATH:  Path for CO5BOLD base directory
+#                    '':        The configure script tries to determine the base directory name
+#                               automatically (default)
+#                    otherwise: This string is used as base directory name (e.g. '/home/user/for')
+#
+# PROCEDURE:
+#   The script is controlled by environment variables (see above).
+#   It tries to use reasonable default values if they are not set (properly).
+#   The machine type is determined with `uname -m` in most cases.
+#   According to the control variables and the machine architecture
+#   the compiler name and its compiler flags are composed.
+#   These are written in the header of a Makefile which is produced in the end.
+#   An existing Makefile is appended to Makefile_old.
+#   Additionally, the compilation command is written into the file
+#     'compiler_flags.info'
+#   in a form ready to be included into CO5BOLD program.
+#
+#   The general compilation procedure for CO5BOLD is:
+#
+#   Quickstart: If the main CO5BOLD directory 'for' should be put into the local directory,
+#   a sub-directory for the current machine exists (in the tar ball or from a previous compilation),
+#   and the configure script is already there:
+#     tar -zxvf for.tar.gz
+#     cd for/hd/rhd/YOUR_MACHINE
+#     ./configure
+#     make
+#
+#   If in addition the remains from a previous compilation should be removed
+#   and some non-default compiler settings should be activated (see ENVIRONMENT, above):
+#     tar -zxvf for.tar.gz
+#     cd for/hd/rhd/YOUR_MACHINE
+#     export F90_VARIABLE1=...
+#     export F90_VARIABLE2=...
+#     ./configure
+#     make removeall
+#     make
+#
+#   If the directory for the current machine has to be created:
+#     mkdir CO5BOLD_DIR
+#     cd CO5BOLD_DIR
+#     tar -zxvf PATH_TO_TAR_FILE/for.tar.gz
+#     cd for/hd/rhd
+#     mkdir YOUR_MACHINE
+#     cd YOUR_MACHINE
+#     ln -s ../conf/configure .
+#     ./configure
+#     make
+#
+#   If directory trees for source code and executable(s) should be separated:
+#     mkdir $HOME/CO5BOLD_SOURCE_DIR
+#     cd $HOME/CO5BOLD_SOURCE_DIR
+#     tar -zxvf PATH_TO_TAR_FILE/for.tar.gz
+#     cd -
+#     mkdir $HOME/CO5BOLD_EXECUTABLE_DIR
+#     cd $HOME/CO5BOLD_EXECUTABLE_DIR
+#     ln -s $HOME/CO5BOLD_SOURCE_DIR/for/hd/rhd/conf/configure .
+#     export F90_BASEPATH=$HOME/CO5BOLD_SOURCE_DIR/for
+#     ./configure
+#     make
+#
+# EXAMPLES:
+#   # --- Linux with Intel compiler (OpenMP, some optimization, color output) ---
+#   export F90_COMPILER=ifort
+#   export F90_PARALLEL=openmp
+#   export F90_POSTFLAGS="-ipo -xHost -static-intel -Dmacro_box_ArrayType_Case=1 \
+#                         -Dmacro_timing_CounterRange_Value=15"
+#   ./configure -c
+#   ls -l Makefile Makefile_old compiler_flags.info
+#   make
+#
+#   # --- Linux with PGI compiler (scalar mode, static linking) ---
+#   export F90_COMPILER=pgf90
+#   export F90_PREFLAGS="-Bstatic"
+#   ./configure
+#   make
+#
+#   # --- Sun (f90 compiler, OpenMP enabled) ---
+#   export F90_PARALLEL=openmp
+#   ./configure
+#   make
+#
+#   # --- Cross compilation on Sun for NEC (activate MSrad modules) ---
+#   export F90_MACHINE=SX-5
+#   export F90_PARALLEL=openmp
+#   export F90_MSRAD=1
+#   ./configure
+#   make
+#
+#   # --- Fancy machine (use only user defined optimization flags) ---
+#   export F90_MACHINE=dummy
+#   export F90_COMPILER=superf90
+#   export F90_LHDRAD=1
+#   export F90_MSRAD=1
+#   export F90_PREFLAGS="-Ototal -veryveryfast -Mpizzawitheverything"
+#   ./configure
+#   make
+#
+# SIDE EFFECTS:
+#   The files 'Makefile' and 'compiler_flags.info' are created or overwritten.
+#   The file 'Makefile_old' is created or modified.
+#   The file '.configurerc' is created if it does not yet exist.
+#
+# WARNINGS:
+#   After changing options (with F90_XXX) or after unpacking a new version of CO5BOLD
+#   on top of an older one, rests of the previous compilation should be removed with
+#     make removeall
+#   before starting the compilation with
+#     make
+#
+# BUGS:
+#
+# TODO:
+#   The settings for NEC are just preliminary.
+#   The settings for SGI might not be up to date.
+#
+#   There is still a set of Makefiles (e.g. for MEAN routines, ...) which are
+#   not used by this script (or its Makefile) anymore but which are necessary to produce
+#   other executables (e.g. mean.exe).
+#
+#   The configrue script is not complete in the sense that not all option combinations are
+#   possible for all machines (e.g. F90_PARALLEL=auto is recognized only for Itanium II machines).
+#
+# MODIFICATION HISTORY:
+#   2002-10-16 (B.F.) First version
+#   2002-10-21 (B.F.) DECalpha, Hitachi
+#   2002-10-29 (B.F.) Dust
+#   2002-11-05 (B.F.) MHD
+#   2002-11-14 (B.F.) F90_MACHINE
+#   2002-11-25 (B.F.) F90_PREFLAGS, F90_POSTFLAGS;
+#                     produce complete Makefile, setarcdeppaths scripts are not necessary anymore
+#   2002-12-02 (B.F.) In Makefile: wait a second before touching the marker file
+#   2002-12-19 (B.F.) New dust module
+#   2002-12-20 (B.F.) Modification for alpha machines; opta_routines.f -> opta_routines.f90
+#   2003-01-15 (B.F.) Hitachi machine dependent modules
+#   2003-01-16 (B.F.) New MSrad version
+#   2003-02-03 (B.F.) Compile cubit only if necessary
+#   2003-02-11 (B.F.) Optimization for Pentium 4 with Intel compiler
+#   2003-02-14 (B.F.) Check machine model on i686 systems
+#   2003-03-25 (B.F.) Look for ./.configurerc file
+#   2003-04-15 (HGL)  Branch for UKAFF Origin 3800
+#   2003-08-25 (B.F. & S.H.) New dust module
+#   2003-11-11 (B.F.) On Hitachi: ${F90_COMPILER} is checked
+#   2004-01-30 (B.F.) ifort
+#   2004-02-17 (B.F.) IBM branch for CINES machine
+#   2004-02-18 (B.F.) F90LINKFLAGS: Remove preprocessor switches "-D..." from link step (.o -> .exe)
+#   2004-03-03 (B.F.) Variable F90LINKFLAGS removed
+#   2004-03-25 (B.F.) rhd_mhd_module now contains MHD solver; MSrad scalar timing info
+#   2004-04-26 (SWB)  chem_rn routines, NEC SX-5/6 adjustment
+#   2004-05-21 (B.F.) rhd_tweak_module
+#   2005-03-02 (JL & SWB) added HION
+#   2005-03-15 (B.F.) Modified IBM/Macintosh settings
+#   2005-04-30 (B.F.) Option: no pointer/array overlap in IBM branch
+#   2005-05-09 (B.F.) AMD Opteron (PGI compiler) settings
+#   2005-06-03 (SWB)  merged versions
+#   2005-06-10 (SWB)  CHEM changes
+#   2005-08-04 (SWB)  NEC SX-8
+#   2005-11-16 (B.F.) g95 compiler branch
+#   2005-11-21 (SWB)  Differential equation solver (DES) added
+#   2006-10-23 (B.F.) Merged branches, allow ".../co5bold" as master base directory
+#   2006-10-24 (B.F.) Some debugging in makefile appendix
+#   2006-11-10 (B.F.) Branch for flags on for Intel compiler on Intel Core
+#   2006-11-15 (B.F.) Untested branch for PathScale compiler,
+#                     branch for gfortran compiler
+#   2006-12-05 (B.F.) Configuration for Intel compiler on Intel Core (Mac und Linux) updated
+#   2007-02-14 (B.F.) Branch for Intel Core2 and AMD Opteron
+#   2007-03-08 (B.F.) rhd_dat_module depends on OPTA
+#   2007-03-13 (B.F.) Branch for E5345
+#   2007-06-05 (B.F.) Module dust_bins_module.f90
+#   2007-03-13 (B.F.) Branch for E5320
+#   2007-08-10 (B.F.) Branch for 5160
+#   2007-11-06 (D.H.) Branch for ifort on SGI (Itanium 2) and gfortran on Power Mac, 
+#                     added gfortran43 option and improved hardware detection on Mac OS
+#   2008-08-30 (B.F.) Special F77C for IBMs
+#   2009-04-01 (SWB)  Fixed use of lin. eq. solver routines for HION 
+#   2009-07-01 (B.F.) Added machine in branch for IBMs
+#   2009-12-21 (M.S. & B.F.) Separate file for opta_dust
+#   2010-02-22 (W.S. & B.F.) MHD modules depends on HYD module
+#   2010-03-18 (B.F. Naples) Prevent "-E" option from influencing "echo"
+#   2010-03-19 (B.F.) rhd_io_module.f90 -> rhd_io_module.F90
+#   2010-03-24 (B.F. & O.S.) Substitution in header line: sh -> bash
+#   2010-04-12 (W.S.) Settings for Intel compiler on Suns;
+#                     Intel compiler: F_UFMTENDIAN=big => -convert big_endian
+#   2010-04-19 (B.F. & A.C.) Updated branch for IBM Power6
+#   2010-04-23 (B.F.) Switch for counter version in timing module
+#   2010-04-29 (B.F.) rhd_mac_module.f90 removed
+#   2010-05-05 (B.F.) Use uio_mac_module.F90 and switches instead of uio_mac_*module.f90
+#   2011-09-08 (B.F. Lyon) Insert rhd_rec_module
+#   2011-10-31 (B.F.) Switch rhd_hyd_roe1d_l01 removed
+#   2011-11-22 (B.F.) Open64 compiler
+#   2011-12-19 (B.F.) Add full compiler version string to compiler_flags.info
+#   2012-02-21 (B.F.) Insert rhd_phys_module
+#   2012-02-29 (B.F.) Use 'uname -s' to identify Darwin OS for Macs
+#   2012-05-07 (B.F.) Option F90_TWEAK may contain tweak file name (without suffix)
+#   2012-07-18 (B.F.) First seed for MPI version
+#   2012-07-26 (B.F.) Allow F90_PARALLEL='mpi' or 'mpi,openmp'
+#   2012-11-08 (B.F.) Put rhd_mpi_module into general RHDB list (i.e., compile it always)
+#   2013-02-19 (B.F.) opta_routines.f90 -> opta_routines.F90
+#   2013-03-14 (B.F.) Remove also Fortran files when 'make removeall' is called
+#   2013-12-09 (B.F. Uppsala) Update gfortran branch
+#   2014-02-08 (B.F.) rhd_dat_module.f90 -> rhd_dat_module.F90
+#   2014-02-22 (B.F.) Minor changes for pgi compiler; some old subroutines removed from inline list
+#   2014-02-24 (B.F.) Account for some changes in default compiler switch values in F90 files
+#   2014-03-12 (B.F.) Optional colors switched-on with F90_COLOR=on
+#   2014-03-13 (B.F.) Optional colors switched-on with command-line option "-c"
+#   2014-04-06 (B.F.) Create template .configurerc file if it does not exist, yet
+#   2014-08-20 (B.F.) rhd_rec_module depends on rhd_gl_module
+#   2014-11-01 (B.F.) SHORTrad module is not compiled per default
+#   2014-11-20 (B.F.) New switch F90_OPTIMIZE
+#   2014-12-02 (B.F.) Remove "rhd_roe1d_step_l01=0" option
+#   2015-02-09 (B.F.) Move path for/con to for/cons, change name of marker file CON to CONS
+#   2015-02-23 (B.F.) Creat make target for unit tests
+#   2015-02-28 (B.F.) Add new rhd_baserad_module
+#   2015-03-06 (B.F.) Put UT_module into own file; add control variable F90_UNITTEST
+#   2015-05-02 (B.F.) Compile the scale module with any tweak module
+#   2016-04-18 (B.F.) Add rhd_boxUT_module
+#   2016-04-29 (B.F.) Add strUT_module
+#   2017-05-17 (B.F.) Add dust_Mg2SiO4AGBUT_module
+#   2017-05-19 (B.F.) Add dust_Al2O3AGBUT_module
+#   2017-08-13 (B.F.) rhd_prop_module.f90 -> rhd_prop_module.F90
+#   2017-08-26 (B.F. Lyon) Partly implement option for some or all unit tests
+#   2017-09-18 (B.F. Uppsala) Add rhd_bound_module
+#   2017-10-07 (B.F.) Add rhd_wrk_module
+#   2017-11-05 (B.F.) Add rhd_mcrad_module, MCrad3D
+#   2017-12-01 (B.F.) Rename M*rad modules
+#   2018-01-11 (D.H.) Set optimization flags for modern Intel processors with Intel compiler
+#   2018-11-29 (B.F.) Remove compiler switch rhd_shortrad_formal_l01 to control loop splitting
+#                     for exp(-dtau) computation
+#   2019-07-01 (B.F.) Check for gfortran compiler by removing version suffix
+#   2019-09-17 (B.F.) Add target to 'make SPEC'
+#   2019-09-24 (B.F.) Modify error color, use different escape-sequence string for colors;
+#                     change comments
+#   2019-10-29 (B.F.) Rename some compiler macros
+#   2019-11-09 (B.F.) Rename compiler macro
+#   2019-11-11 (B.F.) Rename compiler macro
+#   2019-11-21 (B.F.) Rename compiler macro
+#   2019-11-22 (B.F.) Rename compiler macro
+#   2019-11-24 (B.F.) Add rhd_source_module; fix dependencies for HION modules
+#   2019-11-25 (B.F.) Break long lines; expand tabs
+#   2019-11-27 (B.F.) Rename some compiler macros
+#   2019-12-13 (B.F.) Add branch for F90_OPTIMIZE=2 for gfortran and ifort compilers on x86 machines
+#   2020-01-17 (B.F.) Remove some outcommented code
+#   2020-01-22 (B.F.) Change output channel in compiler_flags.info file
+#   2020-01-23 (B.F.) Add system_module.F90
+#   2020-01-29 (B.F.) Add timing_uio_module.F90
+#   2020-02-03 (B.F.) Set base Fortran compiler FC in case of gfortran MPI compilation
+#   2020-02-06 (B.F.) Activate compiler-information printout from some Intel and GNU versions on
+#   2021-04-13 (S.A.D.) Added KROME module configuration
+#---------------------------------------------------------------------------------------------------
+#
+# --- Functions ---
+#
+# cat configure | head -203 | tail -200 | sed -e "s/^# //" -e "s/^#$/ /"
+# --- Print usage of script ---
+usage () {
+sed -n -e "/^# NAME:/,/^# BUGS:/p" configure | grep -v BUGS | sed -e "s/^# //" -e "s/^#$/ /"
+}
+#
+#---------------------------------------------------------------------------------------------------
+#
+# --- Parse options ---
+while getopts ch OPT
+do
+  case "$OPT" in
+    c)                                   # --- Use color in screen output ---
+       F90_COLOR=on
+       ;;
+    h)                                   # --- Print help
+       usage
+       exit 2
+       ;;
+  esac
+done
+#
+echo
+echo "Configuration script for CO5BOLD Makefile"
+echo "========================================="
+echo
+#
+# --- Define colors ---
+ColorWarn='\033[0;31m'
+ColorError='\033[7;31m'
+ColorMess='\033[0;34m'
+ColorNo='\033[0m'
+# ColorWarn='\e[0;31m'
+# ColorError='\e[7;31m'
+# ColorMess='\e[0;34m'
+# ColorNo='\e[0m'
+#
+# --- Execute ./.configurerc file ---
+if [ -f "./.configurerc" ]; then
+  . ./.configurerc
+fi
+#
+# === Check relevant environment variables, set proper default values ==============================
+if [ "${F90_COLOR}" = ''    ] || \
+   [ "${F90_COLOR}" = ' '   ] || \
+   [ "${F90_COLOR}" = 'no'  ] || \
+   [ "${F90_COLOR}" = 'off' ] || \
+   [ "${F90_COLOR}" = 'Off' ] || \
+   [ "${F90_COLOR}" = '0'   ]; then
+  # --- Overwrite all color definitions with empty strings ---
+  ColorWarn=
+  ColorError=
+  ColorMess=
+  ColorNo=
+fi
+#
+# --- Write about execution of ./.configurerc file or write new file ---
+if [ -f "./.configurerc" ]; then
+  echo -e ${ColorMess}"Reading${ColorNo} ./.configurerc."
+else
+  echo -e ${ColorWarn}"No${ColorNo} ./.configurerc ${ColorWarn}file found."${ColorNo}
+  echo -e ${ColorMess}"Writing template${ColorNo} ./.configurerc."
+  #
+  echo "# --- Template for CO5BOLD .configurerc file.                  ---" >  ./.configurerc
+  echo "# --- For more options try './configure -h',                   ---" >> ./.configurerc 
+  echo "# ---                  see the header of the configure script, ---" >> ./.configurerc
+  echo "# ---                  or look into the manual.                ---" >> ./.configurerc
+  echo                                        >> ./.configurerc
+  echo "# export F90_BASEPATH=${HOME}/for"    >> ./.configurerc
+  echo "# export F90_COMPILER=ifort"          >> ./.configurerc
+  echo "# export F90_PARALLEL=scalar"         >> ./.configurerc
+  echo "# export F90_PARALLEL=openmp"         >> ./.configurerc
+  echo "# export F90_PREFLAGS="               >> ./.configurerc
+  echo "# export F90_POSTFLAGS="              >> ./.configurerc
+fi
+echo
+#
+# --- Define explicit lists of routines to be inlined ---
+F90INLINE1="rhd_hyd_pred,rhd_hyd_rossow78tfall"
+F90INLINE2="rhd_rad3d_raylhd,rhd_rad3d_solve,rhd_rad3d_solveeq,rhd_shortrad_operator,\
+rhd_shortrad_dtauop"
+#
+echo -e ${ColorMess}"Checking default settings for environment variables:"${ColorNo}
+#
+# --- Check if Fortran compiler is specified ---
+if [ "${F90_COMPILER}" = '' ] || [ "${F90_COMPILER}" = ' ' ]; then
+  F90_COMPILER=''
+  echo "No compiler         specified                  : F90_COMPILER= ${F90_COMPILER}"
+fi
+#
+# --- Check if parallelization with OpenMP and/or MPI is requested ---
+if [ "${F90_PARALLEL}" = '' ] || [ "${F90_PARALLEL}" = ' ' ] || [ "${F90_PARALLEL}" = '0' ]; then
+  F90_PARALLEL='scalar'
+  F90OPENMP=0
+  F90MPI=0
+  F90MPIFLAGS=''
+  echo "No parallelization  requested, assuming default: F90_PARALLEL= ${F90_PARALLEL}"
+elif [ "${F90_PARALLEL}" = 'scalar' ]; then
+  F90OPENMP=0
+  F90MPI=0
+  F90MPIFLAGS=''
+elif  [ "${F90_PARALLEL}" = 'mpi' ] || [ "${F90_PARALLEL}" = 'MPI' ]; then
+  F90_PARALLEL='mpi'
+  F90OPENMP=0
+  F90MPI=1
+  F90MPIFLAGS='-Dmacro_MPI_Active=1'
+elif [ "${F90_PARALLEL}" = 'openmp' ] || [ "${F90_PARALLEL}" = 'OPENMP' ] || \
+     [ "${F90_PARALLEL}" = 'OpenMP' ]; then
+  F90_PARALLEL='openmp'
+  F90OPENMP=1
+  F90MPI=0
+  F90MPIFLAGS=''
+elif [ "${F90_PARALLEL}" = 'mpi,openmp' ] || [ "${F90_PARALLEL}" = 'openmp,mpi' ] || \
+     [ "${F90_PARALLEL}" = 'MPI,openmp' ] || [ "${F90_PARALLEL}" = 'openmp,MPI' ] || \
+     [ "${F90_PARALLEL}" = 'MPI,OpenMP' ] || [ "${F90_PARALLEL}" = 'OpenMP,MPI' ] || \
+     [ "${F90_PARALLEL}" = 'MPI,OPENMP' ] || [ "${F90_PARALLEL}" = 'OPENMP,MPI' ]; then
+  F90_PARALLEL='mpi,openmp'
+  F90OPENMP=1
+  F90MPI=1
+  F90MPIFLAGS='-Dmacro_MPI_Active=1'
+elif [ "${F90_PARALLEL}" = 'auto' ] || [ "${F90_PARALLEL}" = 'AUTO' ]; then
+  F90_PARALLEL='auto'
+  F90OPENMP=0
+  F90MPI=0
+  F90MPIFLAGS=''
+else
+  F90_PARALLEL='openmp'
+  F90OPENMP=1
+  F90MPI=0
+  F90MPIFLAGS=''
+  echo -e ${ColorError}"Unknown parallelization requested, assuming default: " \
+                       "F90_PARALLEL=${F90_PARALLEL}"${ColorNo}
+fi
+#
+# --- Check if debugging is specified ---
+if [ "${F90_DEBUG}" = '' ] || [ "${F90_DEBUG}" = ' ' ]; then
+  F90_DEBUG=0
+  echo "No debugging        requested, assuming default: F90_DEBUG   = ${F90_DEBUG}"
+elif [ "${F90_DEBUG}" = '1'  ] || [ "${F90_DEBUG}" = 'true' ] || \
+     [ "${F90_DEBUG}" = 'on' ] || [ "${F90_DEBUG}" = 'On'   ]; then
+  F90_DEBUG=1
+fi
+#
+# --- Check if optimization is specified ---
+if [ "${F90_OPTIMIZE}" = '' ] || [ "${F90_OPTIMIZE}" = ' ' ]; then
+  if [ "${F90_DEBUG}" != '0' ]; then
+    F90_OPTIMIZE=0
+  else
+    F90_OPTIMIZE=1
+  fi
+  echo "No optimization     requested, assuming default: F90_OPTIMIZE= ${F90_OPTIMIZE}"
+elif [ "${F90_OPTIMIZE}" = '1'  ] || [ "${F90_OPTIMIZE}" = 'true' ] || \
+     [ "${F90_OPTIMIZE}" = 'on' ] || [ "${F90_OPTIMIZE}" = 'On'   ]; then
+  F90_OPTIMIZE=1
+fi
+#
+# --- Check if explicit list of flags is specified ---
+if [ "${F90_PREFLAGS}" = '' ] || [ "${F90_PREFLAGS}" = ' ' ]; then
+  F90_PREFLAGS=''
+fi
+if [ "${F90_POSTFLAGS}" = '' ] || [ "${F90_POSTFLAGS}" = ' ' ]; then
+  F90_POSTFLAGS=''
+fi
+#
+# --- Check if a radiation transport module should be compiled (and which) ---
+F90_RADFLAGS=""
+F90_RADOBJ=""
+F90_RADLIB=""
+if [ "${F90_LHDRAD}" = '' ] || [ "${F90_LHDRAD}" = ' ' ]; then
+  F90_LHDRAD=0
+  echo "No LHDrad   module  requested, assuming default: F90_LHDRAD  = ${F90_LHDRAD}"
+elif [ "${F90_LHDRAD}" = '1'  ] || [ "${F90_LHDRAD}" = 'true' ] || \
+     [ "${F90_LHDRAD}" = 'on' ] || [ "${F90_LHDRAD}" = 'On'   ]; then
+  F90_LHDRAD=1
+  F90_RADFLAGS="${F90_RADFLAGS} -Dmacro_rad_RAD3D_Active"
+  F90_RADOBJ="${F90_RADOBJ} rhd_lhdrad_module.o cubit_module.o"
+  F90_RADLIB="${F90_RADLIB} rhd_lhdrad_module.o CUB"
+else
+  F90_LHDRAD=0
+fi
+if [ "${F90_MSRAD}" = '' ] || [ "${F90_MSRAD}" = ' ' ]; then
+  F90_MSRAD=0
+  echo "No MSrad    modules requested, assuming default: F90_MSRAD   = ${F90_MSRAD}"
+elif [ "${F90_MSRAD}" = '1'  ] || [ "${F90_MSRAD}" = 'true' ] || \
+     [ "${F90_MSRAD}" = 'on' ] || [ "${F90_MSRAD}" = 'On'   ]; then
+  F90_MSRAD=1
+  F90_RADFLAGS="${F90_RADFLAGS} -Dmacro_rad_MSrad_Active"
+  F90_RADOBJ="${F90_RADOBJ} LCFrad.o rhd_lcfrad_module.o MSCrad.o rhd_mscrad_module.o"
+  F90_RADLIB="${F90_RADLIB} RAD"
+else
+  F90_MSRAD=0
+fi
+if [ "${F90_SHORTRAD}" = '' ] || [ "${F90_SHORTRAD}" = ' ' ]; then
+  F90_SHORTRAD=0
+  echo "No SHORTrad module  requested, assuming default: F90_SHORTRAD= ${F90_SHORTRAD}"
+elif [ "${F90_SHORTRAD}" = '1'  ] || [ "${F90_SHORTRAD}" = 'true' ] || \
+     [ "${F90_SHORTRAD}" = 'on' ] || [ "${F90_SHORTRAD}" = 'On'   ]; then
+  F90_SHORTRAD=1
+  F90_RADFLAGS="${F90_RADFLAGS} -Dmacro_rad_SHORTrad_Active"
+  F90_RADOBJ="${F90_RADOBJ} rhd_shortrad_module.o rhd_baserad_module.o"
+  F90_RADLIB="${F90_RADLIB} rhd_shortrad_module.o rhd_baserad_module.o"
+else
+  F90_SHORTRAD=0
+fi
+F90_RADOBJ=$(echo "${F90_RADOBJ}" | sed -e "s/^ *\(.*\)/\1/")
+F90_RADLIB=$(echo "${F90_RADLIB}" | sed -e "s/^ *\(.*\)/\1/")
+#
+# --- Check if linear algebra routines should be compiled ---
+F90_LAFLAGS=""
+F90_LAOBJ=""
+F90_LALIB=""
+F90_LA=0
+if [ "${F90_HION}" = '1'  ] || [ "${F90_HION}" = 'true' ] || \
+   [ "${F90_HION}" = 'on' ] || [ "${F90_HION}" = 'On'   ];then 
+  F90_LA=1
+fi 
+if [ "${F90_CHEM}" = '1'  ] || [ "${F90_CHEM}" = 'true' ] || \
+   [ "${F90_CHEM}" = 'on' ] || [ "${F90_CHEM}" = 'On'   ]; then
+  F90_LA=1
+fi
+#
+if [ "${F90_LA}" = '1' ]; then 
+  F90_LAFLAGS=" "
+  F90_LALIB="LA"
+  F90_LAOBJ="daxpy.o dcopy.o ddot.o dgbfa.o dgbsl.o dgefa.o dgesl.o dscal.o dswap.o idamax.o"
+fi
+#
+# --- Check if chemistry module should be compiled ---
+F90_CHEMFLAGS=""
+F90_CHEMOBJ=""
+F90_CHEMLIB=""
+if [ "${F90_CHEM}" = '' ] || [ "${F90_CHEM}" = ' ' ]; then
+  F90_CHEM=0
+  echo "No chem.    module  requested, assuming default: F90_CHEM    = ${F90_CHEM}"
+elif [ "${F90_CHEM}" = '1'  ] || [ "${F90_CHEM}" = 'true' ] || \
+     [ "${F90_CHEM}" = 'on' ] || [ "${F90_CHEM}" = 'On'   ]; then
+  F90_CHEM=1
+  F90_CHEMFLAGS="-Drhd_chem01"
+  F90_CHEMLIB="CHEM"
+  F90_CHEMOBJ="dvode_module.o chem_rn_module.o"
+  # # --- Dust module is required ---
+  F90_DUST="1"
+  # 
+  # --- Allow CO line cooling in radiative transfer ---
+  # if [ "${F90_MSRAD}" =  '1' ]; then
+  #   F90_RADOBJ="${F90_RADOBJ} chem_rn_module.o"    
+  # fi 
+else
+  F90_CHEM=0
+fi
+# --- Check if KROME chemistry module should be compiled ---
+F90_KROMEFLAGS=""
+F90_KROMEOBJ=""
+F90_KROMELIB=""
+if [ "${F90_KROME}" = '' ] || [ "${F90_KROME}" = ' ' ]; then
+  F90_KROME=0
+  echo "No KROME chem. module  requested, assuming default: F90_KROME    = ${F90_KROME}"
+elif [ "${F90_KROME}" = '1'  ] || [ "${F90_KROME}" = 'true' ] || \
+     [ "${F90_KROME}" = 'on' ] || [ "${F90_KROME}" = 'On'   ]; then
+  F90_KROME=1
+  F90_KROMEFLAGS="-Drhd_krome01"
+  F90_KROMELIB="KROME"
+  F90_KROMEOBJ="opkda2.o opkda1.o opkdmain.o krome_user_commons.o krome_all.o krome_rn_module.o"
+  #
+  # --- Dust module is required ---
+  F90_DUST="1"
+  # 
+  # --- Allow CO line cooling in radiative transfer ---
+  # if [ "${F90_MSRAD}" =  '1' ]; then
+  #   F90_RADOBJ="${F90_RADOBJ} chem_rn_module.o"    
+  # fi 
+else
+  F90_KROME=0
+fi
+#
+# --- Check if hydrogen ionization module should be compiled ---
+F90_HIONFLAGS=""
+F90_HIONOBJ=""
+F90_HIONLIB=""
+if [ "${F90_HION}" = '' ] || [ "${F90_HION}" = ' ' ]; then
+  F90_HION=0
+  echo "No hion.    module  requested, assuming default: F90_HION    = ${F90_HION}"
+elif [ "${F90_HION}" = '1'  ] || [ "${F90_HION}" = 'true' ] || \
+     [ "${F90_HION}" = 'on' ] || [ "${F90_HION}" = 'On'   ]; then
+  F90_HION=1
+  F90_HIONFLAGS="-Drhd_hion01"
+  F90_HIONLIB="HION"
+  F90_HIONOBJ="edens_module.o dvode_module.o hion_def_module.o hion_io_module.o \
+               hion_util_module.o hion_dvode_module.o hion_main_module.o"
+  #
+  # --- Dust module is required ---
+  F90_DUST="1"
+else
+  F90_HION=0
+fi
+#
+# --- Check if dust module should be compiled ---
+F90_DUSTFLAGS=""
+F90_DUSTOBJ=""
+F90_DUSTLIB=""
+if [ "${F90_DUST}" = '' ] || [ "${F90_DUST}" = ' ' ]; then
+  F90_DUST=0
+  echo "No dust     module  requested, assuming default: F90_DUST    = ${F90_DUST}"
+elif [ "${F90_DUST}" = '1'  ] || [ "${F90_DUST}" = 'true' ] || \
+     [ "${F90_DUST}" = 'on' ] || [ "${F90_DUST}" = 'On'   ]; then
+  F90_DUST=1
+  F90_DUSTFLAGS="-Dmacro_box_quc_Active=1"
+  F90_DUSTOBJ="rhd_source_module.o rhd_dust_module.o dust_k3mon_module.o dust_momentc2_module.o \
+               dust_al2o3agb_module.o dust_mg2sio4agb_module.o dust_bins_module.o"
+  F90_DUSTLIB="DUST"
+else
+  F90_DUST=0
+fi
+#
+# --- Check if MHD module should be compiled ---
+F90_MHDFLAGS=""
+F90_MHDOBJ=""
+F90_MHDLIB=""
+if [ "${F90_MHD}" = '' ] || [ "${F90_MHD}" = ' ' ]; then
+  F90_MHD=0
+  echo "No MHD      module  requested, assuming default: F90_MHD     = ${F90_MHD}"
+elif [ "${F90_MHD}" = '1'  ] || [ "${F90_MHD}" = 'true' ] || \
+     [ "${F90_MHD}" = 'on' ] || [ "${F90_MHD}" = 'On'   ]; then
+  F90_MHD=1
+  F90_MHDFLAGS="-Dmacro_box_Bmag_Active=1"
+  F90_MHDOBJ="rhd_mhd_module.o"
+  F90_MHDLIB="MHD"
+else
+  F90_MHD=0
+fi
+#
+# --- Check if TWEAK module should be compiled ---
+F90_TWEAKFLAGS=""
+F90_TWEAKOBJ=""
+F90_TWEAKLIB=""
+F90_SCALEOBJ=""
+if [ "${F90_TWEAK}" = '' ] || [ "${F90_TWEAK}" = ' ' ] || [ "${F90_TWEAK}" = '0' ]; then
+  F90_TWEAK=0
+  echo "No TWEAK    module  requested, assuming default: F90_TWEAK   = ${F90_TWEAK}"
+elif [ "${F90_TWEAK}" = '1'  ] || [ "${F90_TWEAK}" = 'true' ] || \
+     [ "${F90_TWEAK}" = 'on' ] || [ "${F90_TWEAK}" = 'On'   ]; then
+  F90_TWEAKFLAGS="-Drhd_tweak01"
+  F90_TWEAKSRC="rhd_tweak_module"
+  F90_TWEAKOBJ="rhd_tweak_module.o"
+  F90_TWEAKLIB="TWEAK"
+  F90_SCALEOBJ="rhd_scale_module.o"
+  F90_SCALESRC="rhd_scale_module"
+  F90_TWEAK=1
+else
+  F90_TWEAKFLAGS="-Drhd_tweak01"
+  F90_TWEAKSRC="${F90_TWEAK}"
+  F90_TWEAKOBJ="rhd_tweak_module.o"
+  F90_TWEAKLIB="TWEAK"
+  F90_SCALEOBJ="rhd_scale_module.o"
+  F90_SCALESRC="rhd_scale_module"
+  F90_TWEAK=1
+fi
+#
+# --- Check if UNITTEST module should be compiled ---
+F90_UNITTESTFLAGS=""
+F90_UNITTESTOBJ=""
+if [ "${F90_UNITTEST}" = ''  ] ||
+   [ "${F90_UNITTEST}" = ' ' ] || [ "${F90_UNITTEST}" = '0' ]; then
+  F90_UNITTEST=
+  echo "No UnitTest module  requested, assuming default: F90_UNITTEST= ${F90_UNITTEST}"
+else
+  if   [ "${F90_UNITTEST}" = '1'    ] || \
+       [ "${F90_UNITTEST}" = 'some' ] || [ "${F90_UNITTEST}" = 'Some' ]; then
+    F90_UNITTESTFLAGS="-Dut_switch_testall=1"
+    F90_UNITTEST=1
+  elif [ "${F90_UNITTEST}" = '2'    ] || [ "${F90_UNITTEST}" = 'true' ] || \
+       [ "${F90_UNITTEST}" = 'on'   ] || [ "${F90_UNITTEST}" = 'On'   ] || \
+       [ "${F90_UNITTEST}" = 'all'  ] || [ "${F90_UNITTEST}" = 'All'  ]; then
+    F90_UNITTESTFLAGS="-Dut_switch_testall=2"
+    F90_UNITTEST=2
+  else
+    F90_UNITTESTFLAGS="-Dut_switch_testall=0"
+  fi
+  #
+  F90_UNITTESTOBJ=""
+  # echo "F90_UNITTEST = ${F90_UNITTEST}"
+  #
+  if [ $(expr match "${F90_UNITTEST}" ".*rhd_baseradUT_module=0") = 0 ] && \
+     ( [ $(expr match "${F90_UNITTEST}" ".*rhd_baseradUT_module") != 0 ] || \
+       [ "${F90_UNITTEST}" = '1' ] || [ "${F90_UNITTEST}" = '2' ] ); then
+    if [ $(expr match "${F90_UNITTEST}" ".*rhd_baseradUT_module=1") != 0 ] || \
+       [ "${F90_UNITTEST}" = '1' ]; then
+      F90_UNITTESTFLAGS="${F90_UNITTESTFLAGS} -Dut_switch_rhd_baseradUT_module=1"
+    else
+      F90_UNITTESTFLAGS="${F90_UNITTESTFLAGS} -Dut_switch_rhd_baseradUT_module=2"
+    fi
+    F90_UNITTESTOBJ="${F90_UNITTESTOBJ} rhd_baserad_module.o rhd_baseradUT_module.o"
+  fi
+  #
+  if [ $(expr match "${F90_UNITTEST}" ".*rhd_boxUT_module=0") = 0 ] && \
+     ( [ $(expr match "${F90_UNITTEST}" ".*rhd_boxUT_module") != 0 ] || \
+       [ "${F90_UNITTEST}" = '1' ] || [ "${F90_UNITTEST}" = '2' ] ); then
+    if [ $(expr match "${F90_UNITTEST}" ".*rhd_boxUT_module=1") != 0 ] || \
+       [ "${F90_UNITTEST}" = '1' ]; then
+      F90_UNITTESTFLAGS="${F90_UNITTESTFLAGS} -Dut_switch_rhd_boxUT_module=1"
+    else
+      F90_UNITTESTFLAGS="${F90_UNITTESTFLAGS} -Dut_switch_rhd_boxUT_module=2"
+    fi
+    F90_UNITTESTOBJ="${F90_UNITTESTOBJ} timing_module.o \
+                     uio_base_module.o uio_bulk_module.o uio_mac_module.o \
+                     rhd_prop_module.o rhd_bound_module.o gasinter_routines.o \
+                     rhd_mpi_module.o rhd_sub_module.o rhd_io_module.o \
+                     rhd_box_module.o rhd_boxUT_module.o"
+  fi
+  #
+  if [ $(expr match "${F90_UNITTEST}" ".*rhd_meanUT_module=0") = 0 ] && \
+     ( [ $(expr match "${F90_UNITTEST}" ".*rhd_meanUT_module") != 0 ] || \
+       [ "${F90_UNITTEST}" = '1' ] || [ "${F90_UNITTEST}" = '2' ] ); then
+    if [ $(expr match "${F90_UNITTEST}" ".*rhd_meanUT_module=1") != 0 ] || \
+       [ "${F90_UNITTEST}" = '1' ]; then
+      F90_UNITTESTFLAGS="${F90_UNITTESTFLAGS} -Dut_switch_rhd_meanUT_module=1"
+    else
+      F90_UNITTESTFLAGS="${F90_UNITTESTFLAGS} -Dut_switch_rhd_meanUT_module=2"
+    fi
+    if [ $(expr match "${F90_UNITTESTOBJ}" ".*rhd_box_module.o") = 0 ]; then
+      F90_UNITTESTOBJ="${F90_UNITTESTOBJ} rhd_box_module.o"
+    fi
+    F90_UNITTESTOBJ="${F90_UNITTESTOBJ} rhd_meankind_module.o rhd_mean_module.o rhd_meanUT_module.o"
+  fi
+  #
+  if [ $(expr match "${F90_UNITTEST}" ".*dust_Al2O3AGBUT_module") != 0 ] || \
+     [ "${F90_UNITTEST}" = '1' ] || [ "${F90_UNITTEST}" = '2' ]; then
+    F90_UNITTESTFLAGS="${F90_UNITTESTFLAGS} -Dut_switch_dust_Al2O3AGBUT_module=2"
+    F90_UNITTESTOBJ="${F90_UNITTESTOBJ} dust_al2o3agb_module.o dust_al2o3agbUT_module.o"
+  fi
+  if [ $(expr match "${F90_UNITTEST}" ".*dust_Mg2SiO4AGBUT_module") != 0 ] || \
+     [ "${F90_UNITTEST}" = '1' ] || [ "${F90_UNITTEST}" = '2' ]; then
+    F90_UNITTESTFLAGS="${F90_UNITTESTFLAGS} -Dut_switch_dust_Mg2SiO4AGBUT_module=2"
+    F90_UNITTESTOBJ="${F90_UNITTESTOBJ} dust_mg2sio4agb_module.o dust_mg2sio4agbUT_module.o"
+  fi
+  if [ $(expr match "${F90_UNITTEST}" ".*rhd_recUT_module") != 0 ] || \
+     [ "${F90_UNITTEST}" = '1' ] || [ "${F90_UNITTEST}" = '2' ]; then
+    F90_UNITTESTFLAGS="${F90_UNITTESTFLAGS} -Dut_switch_rhd_recUT_module=2"
+    F90_UNITTESTOBJ="${F90_UNITTESTOBJ} rhd_rec_module.o rhd_recUT_module.o"
+  fi
+  #
+  if [ $(expr match "${F90_UNITTEST}" ".*strUT_module=0") = 0 ] && \
+     ( [ $(expr match "${F90_UNITTEST}" ".*strUT_module") != 0 ] || \
+       [ "${F90_UNITTEST}" = '1' ] || [ "${F90_UNITTEST}" = '2' ] ); then
+    if [ $(expr match "${F90_UNITTEST}" ".*strUT_module=1") != 0 ] || \
+       [ "${F90_UNITTEST}" = '1' ]; then
+      F90_UNITTESTFLAGS="${F90_UNITTESTFLAGS} -Dut_switch_strUT_module=1"
+    else
+      F90_UNITTESTFLAGS="${F90_UNITTESTFLAGS} -Dut_switch_strUT_module=2"
+    fi
+    F90_UNITTESTOBJ="${F90_UNITTESTOBJ} str_module.o strUT_module.o"
+  fi
+fi
+if [ "${F90_UNITTESTFLAGS}" != '' ] || [ "${F90_UNITTESTOBJ}" != '' ]; then
+  echo "F90_UNITTESTFLAGS = ${F90_UNITTESTFLAGS}"
+  echo "F90_UNITTESTOBJ   = ${F90_UNITTESTOBJ}"
+fi
+#
+# === Set amount of timing information according to parallelization level ==========================
+if [ "${F90_PARALLEL}" = 'scalar' ]; then
+  F90TIME="-Drhd_roe1d_step_t01 -Drhd_roe1d_flux_t01 -Drhd_vis_t01 -Drhd_bound_t01"
+  if [ "${F90_SHORTRAD}" = '1' ]; then
+    F90TIME="${F90TIME} -Drhd_shortrad_step_t01 -Drhd_shortrad_formal_t01"
+  fi
+  if [ "${F90_MSRAD}" = '1' ]; then
+    F90TIME="${F90TIME} -DLCFrad_sub_t01=1 -DMSCrad_sub_t01=1 "
+  fi
+  if [ "${F90_LHDRAD}" = '1' ]; then
+    F90TIME="${F90TIME} -Drhd_rad3d_dir_t01 -Drhd_rad3d_step_t01"
+  fi
+else
+  F90TIME=""
+  if [ "${F90_SHORTRAD}" = '1' ]; then
+    F90TIME="${F90TIME} -Drhd_shortrad_step_t01 -Drhd_shortrad_formal_t01"
+  fi
+fi
+if [ "${F90_CHEM}" = '1' ]; then
+  F90TIME="${F90TIME} -Drhd_chem_t01=1"
+fi
+if [ "${F90_KROME}" = '1' ]; then
+  F90TIME="${F90TIME} -Drhd_krome_t01=1"
+fi
+if [ "${F90_HION}" = '1' ]; then
+  F90TIME="${F90TIME} -Drhd_hion_t01=1"
+fi
+if [ "${F90_DUST}" = '1' ]; then
+  F90TIME="${F90TIME} -Drhd_dust_t01"
+fi
+#if [ "${F90_MHD}" = '1' ]; then
+#  F90TIME="${F90TIME} -Drhd_bmag_t01"
+#fi
+if [ "${F90_TWEAK}" = '1' ]; then
+  F90TIME="${F90TIME} -Drhd_tweak_t01"
+fi
+F90TIME="${F90TIME} -Dmacro_system_TimeRateSource_Case=3"
+#
+# === Set processor type ==========================================================================
+# --- Check if machine is specified ---
+if [ "${F90_MACHINE}" = 'local' ] || [ "${F90_MACHINE}" = '' ] || [ "${F90_MACHINE}" = ' ' ]; then
+  F90_MACHINE='local'
+  echo "No explicit machine specified, assuming default: F90_MACHINE = ${F90_MACHINE}"
+fi
+SYSTEM=`uname -s`
+if [ "${F90_MACHINE}" = 'local' ]; then
+  # --- IBM AIX workaround ---
+  if [ -x /usr/sbin/lsconf ] ; then
+    MACHINE=`/usr/sbin/lsconf|awk '/Processor Type:/ {print $3}'`
+  else
+    MACHINE=`uname -m`
+  fi
+  if [ "${SYSTEM}" = 'Darwin' ]; then
+    # --- It's likely a Mac -- try to identify CPU type ---
+    MACMODEL=$(sysctl hw.model|awk '{print $2}')
+    # MACMODEL='Macintosh'
+  elif [ "${MACHINE}" = 'i686' ] || [ "${MACHINE}" = 'x86_64' ]; then
+    MACMODEL=$(cat /proc/cpuinfo | grep "model name" | uniq | \
+               sed -n -e "s/^.*\([0-9][0-9][0-9][0-9]\).*/\1/p")
+    if [ "${MACMODEL}" = '5160' ] || \
+       [ "${MACMODEL}" = '5320' ] || [ "${MACMODEL}" = '5345' ] ; then
+      MACMODEL='Intel Core2'
+    else
+      MACMODEL=$(cat /proc/cpuinfo | grep "model name" | uniq | \
+                 sed -e "s/^.*: *\(.*\)/\1/" | sed -e "s/(R)//g" | sed -e "s/([tT][mM])//g")
+    fi
+  elif [ "${MACHINE}" = 'i386' ] || [ "${MACHINE}" = 'Power Macintosh' ]; then
+    # --- Assume that it is a Mac -- try to identify CPU type ---
+    MACMODEL=$(sysctl hw.model|awk '{print $2}')
+    # MACMODEL='Macintosh'
+  else
+    MACMODEL=''
+  fi
+else
+  MACHINE=$(echo "${F90_MACHINE}" | sed -e "s/\(^[^(]*\)(.*/\1/" | sed -e "s/^\(.*[^ ]\) *$/\1/")
+  if [ "${MACHINE}" = '' ]; then
+    MACHINE=`uname -m`
+  fi
+  MACMODEL=$(echo "${F90_MACHINE}" | sed -n -e "s/^[^(]*(\(.*\)) */\1/p")
+  if [ "${MACMODEL}" = '' ] && ( [ "${MACHINE}" = 'i686' ] || [ "${MACHINE}" = 'x86_64' ] ); then
+    MACMODEL=$(cat /proc/cpuinfo | grep "model name" | uniq | \
+               sed -n -e "s/^.*\([0-9][0-9][0-9][0-9]\).*/\1/p")
+    if [ "${MACMODEL}" = '5160' ] || \
+       [ "${MACMODEL}" = '5320' ] || [ "${MACMODEL}" = '5345' ] ; then
+      MACMODEL='Intel Core2'
+    else
+      MACMODEL=$(cat /proc/cpuinfo | grep "model name" | uniq | \
+                 sed -e "s/^.*: *\(.*\)/\1/" | sed -e "s/(R)//g" | sed -e "s/([tT][mM])//g")
+    fi
+  fi
+fi
+#
+# === Set base path ================================================================================
+if [ "${F90_BASEPATH}" = '' ] || [ "${F90_BASEPATH}" = ' ' ]; then
+  F90_BASEPATH=`pwd | sed -n -e "s/^\(.*\)\/hd\/rhd\/.*/\1/p"`
+  if [ "${F90_BASEPATH}" = '' ] || [ "${F90_BASEPATH}" = ' ' ]; then
+    F90_BASEPATH=`pwd | sed -n -e "s/^\(.*\/co5bold\).*/\1\/for/p"`
+  fi
+  if [ "${F90_BASEPATH}" = '' ] || [ "${F90_BASEPATH}" = ' ' ]; then
+    F90_BASEPATH=`pwd | sed -n -e "s/^\(.*\)\/hd\/spec\/.*/\1/p"`
+  fi
+  echo "No explicit path    specified, assuming default: F90_BASEPATH= ${F90_BASEPATH}"
+fi
+#
+# === Print list of control environment variables ==================================================
+echo
+echo -e ${ColorMess}"List of control environment variables:"${ColorNo}
+echo "F90_COMPILER =" ${F90_COMPILER}
+echo "F90_PREFLAGS =" ${F90_PREFLAGS}
+echo "F90_POSTFLAGS=" ${F90_POSTFLAGS}
+echo "F90_PARALLEL =" ${F90_PARALLEL}
+echo "F90_DEBUG    =" ${F90_DEBUG}
+echo "F90_OPTIMIZE =" ${F90_OPTIMIZE}
+echo "F90_LHDRAD   =" ${F90_LHDRAD}
+echo "F90_MSRAD    =" ${F90_MSRAD}
+echo "F90_SHORTRAD =" ${F90_SHORTRAD}
+echo "F90_CHEM     =" ${F90_CHEM}
+echo "F90_KROME    =" ${F90_KROME}
+echo "F90_HION     =" ${F90_HION}
+echo "F90_DUST     =" ${F90_DUST}
+echo "F90_MHD      =" ${F90_MHD}
+echo "F90_TWEAK    =" ${F90_TWEAK}
+if [ "${F90_UNITTEST}" != '' ]; then
+echo "F90_UNITTEST =" ${F90_UNITTEST}
+fi
+echo "F90_MACHINE  =" ${F90_MACHINE}
+echo " -> MACHINE  =" ${MACHINE}
+echo "    MACMODEL =" ${MACMODEL}
+echo "F90_BASEPATH =" ${F90_BASEPATH}
+echo
+#
+#
+# === Set paths ====================================================================================
+if [ "${F90_BASEPATH}" != '' ]; then
+  # --- Set paths for individual libraries ---
+  #
+  # --- Timing ---
+  TIMEPATH=${F90_BASEPATH}/time/f90 ; export TIMEPATH
+  TIMESRCPATH=${TIMEPATH} ; export TIMESRCPATH
+  #
+  # --- Constants & units ---
+  # CONPATH=${F90_BASEPATH}/con/f90 ; export CONPATH
+  CONPATH=${F90_BASEPATH}/cons/f90 ; export CONPATH
+  CONSRCPATH=${CONPATH} ; export CONSRCPATH
+  #
+  # --- UIO ---
+  UIOPATH=${F90_BASEPATH}/uio ; export UIOPATH
+  UIOSRCPATH=${UIOPATH}/f90 ; export UIOSRCPATH
+  #
+  # --- String handling ---
+  STRPATH=${F90_BASEPATH}/mat/str ; export STRPATH
+  STRSRCPATH=${STRPATH} ; export STRSRCPATH
+  #
+  # --- System-information routines ---
+  SYSPATH=${F90_BASEPATH}/sys/f90 ; export SYSPATH
+  SYSSRCPATH=${SYSPATH} ; export SYSSRCPATH
+  #
+  # --- Linear algebra ---
+  LAPATH=${F90_BASEPATH}/mat/la ; export LAPATH
+  LASRCPATH=${LAPATH} ; export LASRCPATH
+  #
+  # --- Differential equation solver ---
+  DESPATH=${F90_BASEPATH}/mat/des ; export DESPATH
+  DESSRCPATH=${DESPATH} ; export DESSRCPATH
+  #
+  # --- gas ---
+  # GASPATH=${F90_BASEPATH}/eos/gas ; export GASPATH
+  # GASSRCPATH=${GASPATH} ; export GASSRCPATH
+  #
+  # --- EOS ---
+  EOSPATH=${F90_BASEPATH}/eos ; export EOSPATH
+  EOSSRCPATH=${EOSPATH}/f90 ; export EOSSRCPATH
+  #
+  # --- Opacity ---
+  OPTAPATH=${F90_BASEPATH}/opa/opta ; export OPTAPATH
+  OPTASRCPATH=${OPTAPATH} ; export OPTASRCPATH
+  #
+  # --- hydrostatic ---
+  HSTPATH=${F90_BASEPATH}/hd/qf15 ; export HSTPATH
+  HSTSRCPATH=${HSTPATH} ; export HSTSRCPATH
+  #
+  # --- rad ---
+  RADPATH=${F90_BASEPATH}/rad/hdrad ; export RADPATH
+  RADSRCPATH=${RADPATH} ; export RADSRCPATH
+  #
+  # --- RHD ---
+  RHDPATH=${F90_BASEPATH}/hd/rhd ; export RHDPATH
+  RHDSRCPATH=${RHDPATH} ; export RHDSRCPATH
+  #
+  # --- RHDB ---
+  RHDBPATH=${F90_BASEPATH}/hd/rhdb ; export RHDBPATH
+  RHDBSRCPATH=${RHDBPATH} ; export RHDBSRCPATH
+  #
+  # --- HDW ---
+  HDWPATH=${F90_BASEPATH}/hd/hdw ; export HDWPATH
+  HDWSRCPATH=${HDWPATH} ; export HDWSRCPATH
+  #
+  # --- CHEM ---
+  CHEMPATH=${F90_BASEPATH}/hd/chem ; export CHEMPATH
+  CHEMSRCPATH=${CHEMPATH} ; export CHEMSRCPATH
+  #
+  # --- KROME ---
+  KROMEPATH=${F90_BASEPATH}/hd/krome ; export KROMEPATH
+  KROMESRCPATH=${KROMEPATH} ; export KROMESRCPATH
+  #
+  # --- HION ---
+  HIONPATH=${F90_BASEPATH}/hd/hion/f90 ; export HIONPATH
+  HIONSRCPATH=${HIONPATH} ; export HIONSRCPATH
+  #
+  # --- DUST ---
+  DUSTPATH=${F90_BASEPATH}/hd/dust ; export DUSTPATH
+  DUSTSRCPATH=${DUSTPATH} ; export DUSTSRCPATH
+  #
+  # --- MHD ---
+  MHDPATH=${F90_BASEPATH}/hd/mhd ; export MHDPATH
+  MHDSRCPATH=${MHDPATH} ; export MHDSRCPATH
+  #
+  # --- TWEAK ---
+  TWEAKPATH=${F90_BASEPATH}/hd/tweak ; export TWEAKPATH
+  TWEAKSRCPATH=${TWEAKPATH} ; export TWEAKSRCPATH
+  #
+  # --- UNITT ---
+  UNITTPATH=${F90_BASEPATH}/hd/unitt ; export UNITTPATH
+  UNITTSRCPATH=${UNITTPATH} ; export UNITTSRCPATH
+  #
+  # --- SPEC ---
+  SPECPATH=${F90_BASEPATH}/hd/spec ; export SPECPATH
+  SPECSRCPATH=${SPECPATH} ; export SPECSRCPATH
+fi
+#
+# === Check for machine architecture, set compiler flags accordingly ===============================
+# echo 'Shortcut for machine architecture:' ${MACHINE}
+#
+# --- Default values ---
+F90UIO="-Duio_switch_system_l01=1 -Duio_switch_native_l01=1 -Duio_switch_ieeebe_l01=1 \
+        -Duio_switch_ieee_l01=1"
+F90C="f90"
+F90CMPI="mpif90"
+F77C=''
+FC=''
+PRESUF="F90"
+F90FULLVERSION=''
+F90FLAGS=''
+F90EOSFLAGS=''
+F90MODULES="${F90_RADFLAGS} ${F90_CHEMFLAGS} ${F90_KROMEFLAGS} ${F90_HIONFLAGS} ${F90_DUSTFLAGS} \
+            ${F90_MHDFLAGS} ${F90_TWEAKFLAGS}"
+#
+echo -e ${ColorMess}"System and compiler info:"${ColorNo}
+#
+if [ "${MACHINE}" = 'sv1' ]; then
+  # *** Cray SV1 (craSHi) **************************************************************************
+  MACSTRING="Cray ${MACHINE} architecture"
+  echo "${MACSTRING}"
+  #
+  # F90UIO="-Duio_switch_system_l01=5 -Duio_switch_native_l01=1 -Duio_switch_ieeebe_l01=2 \
+  #         -Duio_switch_ieee_l01=2 -Duio_switch_crayxmp_l01=1 \
+  #         -Duio_switch_open_l01=3"                                    # --- For good old craSH ---
+  F90UIO="-Duio_switch_system_l01=4 -Duio_switch_native_l01=1 -Duio_switch_ieeebe_l01=2 \
+          -Duio_switch_ieee_l01=2 -Duio_switch_crayxmp_l01=1 -Duio_switch_open_l01=2"
+  F90TIME=$(echo ${F90TIME} | sed -e "s/\(macro_system_TimeRateSource_Case=\)./\15/")
+  #
+  # --- Preprocessor and report ---
+  F90FLAGS="-F -r 2"
+  #
+  # --- Parallelization ---
+  if [ "${F90OPENMP}" = '1' ]; then
+    F90FLAGS="${F90FLAGS} -Otask1"
+  fi
+  #
+  # --- Optimization ---
+  if [ "${F90_OPTIMIZE}" = '1' ]; then
+    F90FLAGS="${F90FLAGS} -Oscalar3 -Ovector3"
+    F90FLAGS="${F90FLAGS} -Oinline3"
+  elif [ "${F90_OPTIMIZE}" != '0' ]; then
+    # --- Use user-specified options ---
+    F90FLAGS="${F90FLAGS} ${F90_OPTIMIZE}"
+  fi
+  #
+  # --- Debugging ---
+  if [ "${F90_DEBUG}" != '0' ]; then
+    F90FLAGS="${F90FLAGS} -g"
+  fi
+  #
+  F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO} -Drhd_hyd_entropyfix_p01=1 \
+            -Drhd_hyd_upwind_p01=1 -DLCFrad_raytas=1 -Dmacro_gasinter_LoopType_Case=1 \
+            -Dmacro_gasinter_ArrayType_Case=0"
+  #
+elif [ "${MACHINE}" = 'alpha' ]; then
+  # *** alpha **************************************************************************************
+  MACSTRING="alpha system with ${MACHINE} architecture"
+  echo "${MACSTRING}"
+  #
+  F90UIO="-Duio_switch_system_l01=1 -Duio_switch_native_l01=1 -Duio_switch_ieeebe_l01=1 
+          -Duio_switch_ieeele_l01=1 -Duio_switch_ieee_l01=1 -Duio_switch_open_l01=1"
+  #
+  F90TIME=''
+  #
+  # --- Preprocessor, and for UIO: assume that record lengths are measured in bytes ---
+  F90FLAGS="-cpp -assume byterecl"
+  #
+  # --- Parallelization ---
+  if [ "${F90OPENMP}" = '1' ]; then
+    F90FLAGS="${F90FLAGS} -omp"
+  fi
+  #
+  # --- Optimization ---
+  if [ "${F90_OPTIMIZE}" = '1' ]; then
+    # --- Standard ---
+    F90FLAGS="${F90FLAGS} -O4"
+    F90FLAGS="${F90FLAGS} -inline speed -V"
+  elif [ "${F90_OPTIMIZE}" != '0' ]; then
+    # --- Use user-specified options ---
+    F90FLAGS="${F90FLAGS} ${F90_OPTIMIZE}"
+  fi
+  #
+  # --- Debugging ---
+  if [ "${F90_DEBUG}" = '1' ]; then
+    # --- Debugging ---
+    F90FLAGS="${F90FLAGS} -g -ladebug -C"
+  elif [ "${F90_DEBUG}" != '0' ]; then
+    # --- Check array bounds ---
+    F90FLAGS="${F90FLAGS} -O4 -C"
+    F90FLAGS="${F90FLAGS} -inline speed -V"
+  fi
+  #
+  F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO} -DLCFrad_raytas=0"
+  #
+elif [ `echo "${MACHINE}" | sed -e "s/^\(....\).*/\1/"` = '9000' ]; then
+  # *** HP 9000 ************************************************************************************
+  # 9000/800 (zeipel), 9000/785 (jay1)
+  MACSTRING="HP system with ${MACHINE} architecture"
+  echo "${MACSTRING}"
+  #
+  PRESUF=f90
+  #
+  # --- Preprocessor, activate VAXlib ---
+  F90FLAGS="+cpp=yes +U77"
+  #
+  # --- Parallelization ---
+  if [ "${F90OPENMP}" = '1' ]; then
+    F90FLAGS="${F90FLAGS} +Oopenmp +Onoautopar"
+  else
+    F90FLAGS="${F90FLAGS} +Onoopenmp"
+  fi
+  #
+  # --- Optimization ---
+  if [ "${F90_OPTIMIZE}" = '1' ]; then
+    F90FLAGS="${F90FLAGS} +O3 +Olimit +Olibcalls"
+    F90FLAGS="${F90FLAGS} +Oinline"
+  elif [ "${F90_OPTIMIZE}" != '0' ]; then
+    # --- Use user-specified options ---
+    F90FLAGS="${F90FLAGS} ${F90_OPTIMIZE}"
+  fi
+  #
+  # --- Debugging ---
+  if [ "${F90_DEBUG}" != '0' ]; then
+    F90FLAGS="${F90FLAGS} -g +check=all +Onoinline"
+  fi
+  #
+  F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO}"
+  #
+elif [ "${MACHINE}" = 'ia64' ]; then
+  # *** HP / Altix ia64 (Itanium[2]) ***************************************************************
+  MACSTRING="HP or SGI Itanium system with ${MACHINE} architecture"
+  echo "${MACSTRING}"
+  #
+  if [ "${F90_COMPILER}" = 'ifc'   ] || \
+     [ "${F90_COMPILER}" = 'ifort' ] || [ "${F90_COMPILER}" = 'intel' ]; then
+    # --- Settings for Intel compiler --------------------------------------------------------------
+    echo "  Intel compiler"
+    #
+    # --- Compiler version ---
+    if [ "${F90_COMPILER}" = 'ifc' ]; then
+      F90VERSION=`ifc -V 2>&1 | sed -n -e "s/^.*Version \([0-9]*\)\..*/\1/p"`
+    else
+      F90VERSION=`ifort -V 2>&1 | sed -n -e "s/^.*Version \([0-9]*\)\..*/\1/p"`
+    fi
+    #
+    if [ "${F90VERSION}" = '7' ]; then
+      F90C=ifc
+    else
+      F90C=ifort
+      F90VERSION=`ifort -V 2>&1 | sed -n -e "s/^.*Version \([0-9]*\)\..*/\1/p"`
+    fi
+    echo "  version=${F90VERSION}"
+    #
+    # --- Assume record length of one byte ---
+    if [ "${F90VERSION}" != '7' ]; then
+      F90FLAGS="-assume byterecl"
+    fi
+    #
+    # --- Swap bytes ---
+    echo "The old setting F_UFMTENDIAN=big is now obsolete"
+    F90FLAGS="${F90FLAGS} -convert big_endian"
+    #
+    # --- Load VAX library, use preprocessor ---
+    F90FLAGS="${F90FLAGS} -Vaxlib -fpp"
+    #
+    # --- Parallelization ---
+    if [ "${F90OPENMP}" = '1' ]; then
+      F90FLAGS="${F90FLAGS} -openmp"
+      # F90FLAGS="${F90FLAGS} -openmp -save"
+      # F90FLAGS="${F90FLAGS} -openmp -auto_scalar"
+      echo -e ${ColorWarn}
+      echo -e "In case of memory-allocation errors, increase the stack size per thread e.g. by:"
+      echo -e "> export KMP_STACKSIZE=100m"
+      echo -e "or"
+      echo -e "> export OMP_STACKSIZE=100M"${ColorNo}
+    else
+      F90FLAGS="${F90FLAGS} -save"  # conflicts with -openmp, which wants to select "-automatic" 
+    fi
+    #
+    # --- Optimization ---
+    if [ "${F90_OPTIMIZE}" = '1' ]; then
+      # --- Optimization (only real ones are probably Itanium/2, so far) ---
+      if [ "${MACMODEL}" = "Intel Xeon" ]; then
+        # --- Intel Xeon ---
+        #
+        F90FLAGS="${F90FLAGS} -O3 -tpp7 -xW"
+      elif [ "${MACHINE}" = "ia64" ]; then
+        # --- (defaults to -tpp2 for Itanium 2) ---
+        #
+        F90FLAGS="${F90FLAGS} -O3 -ftz -fpe1 -tpp2 -IPF_fma -IPF_fltacc -stack_temps -fpconstant"
+        #        "-IPF_fp-relaxed -align common"
+      else
+        # --- Generic ---
+        #
+        F90FLAGS="${F90FLAGS} -O1 -ftz -fpe1 -tpp1 -IPF_fma -IPF_fltacc -stack_temps -fpconstant"
+      fi
+      F90FLAGS="${F90FLAGS} -ip -ipo -W0"
+    elif [ "${F90_OPTIMIZE}" != '0' ]; then
+      # --- Use user-specified options ---
+      F90FLAGS="${F90FLAGS} ${F90_OPTIMIZE}"
+    fi
+    #
+    # --- Debugging ---
+    if [ "${F90_DEBUG}" != '0' ]; then
+      F90FLAGS="${F90FLAGS} -g"
+    fi
+    #
+    # F90REPORT="-vec_report1 -list -showinclude "
+    F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO} -DLCFrad_raytas=2 \
+              -Drhd_hyd_entropyfix_p01=1"
+    #
+  else
+    # --- Settings for HP compiler -----------------------------------------------------------------
+    PRESUF=f90
+    #
+    # --- Preprocessor, activate VAXlib ---
+    F90FLAGS="+cpp=yes +U77"
+    #
+    # --- Parallelization ---
+    if [ "${F90OPENMP}" = '1' ]; then
+      F90FLAGS="${F90FLAGS} +Oopenmp +Onoautopar"
+    elif [ "${F90_PARALLEL}" = 'auto' ]; then
+      F90FLAGS="${F90FLAGS} +Oparallel +Onoopenmp +Oautopar"
+    else
+      F90FLAGS="${F90FLAGS} +Onoopenmp +Onoautopar"
+    fi
+    #
+    # --- Optimization ---
+    if [ "${F90_OPTIMIZE}" = '1' ]; then
+      F90FLAGS="${F90FLAGS} +Ofaster +O3 +Oinfo"
+      # F90FLAGS="${F90FLAGS} +Ofast +Ofltacc=strict +Oinfo"
+      F90FLAGS="${F90FLAGS} +Oinline"
+    elif [ "${F90_OPTIMIZE}" != '0' ]; then
+      # --- Use user-specified options ---
+      F90FLAGS="${F90FLAGS} ${F90_OPTIMIZE}"
+    fi
+    #
+    # --- Debugging ---
+    if [ "${F90_DEBUG}" = '1' ]; then
+      F90FLAGS="${F90FLAGS} -g"
+    elif [ "${F90_DEBUG}" != '0' ]; then
+      F90FLAGS="${F90FLAGS} -g +DSnative +check=all +Oinitcheck"
+    fi
+    #
+    F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO} -Drhd_hyd_entropyfix_p01=1"
+  fi
+  #
+elif [ "${MACHINE}" = 'SR8000' ]; then
+  # *** Hitachi ************************************************************************************
+  MACSTRING="Hitachi system with ${MACHINE} architecture"
+  echo "${MACSTRING}"
+  #
+  # --- Compiler ---
+  if [ "${F90_COMPILER}" != '' ]; then
+    F90C=${F90_COMPILER}
+  fi
+  #
+  F90UIO="-Duio_switch_system_l01=3 -Duio_switch_native_l01=2 -Duio_switch_ieeebe_l01=1 \
+          -Duio_switch_ieee_l01=1"
+  F90TIME=$(echo ${F90TIME} | sed -e "s/\(macro_system_TimeRateSource_Case=\)./\16/")
+  #
+  F90TIME=''
+  #
+  # --- General ---
+  F90FLAGS=''
+  #
+  # --- Parallelization ---
+  if [ "${F90OPENMP}" = '1' ]; then
+    F90FLAGS="${F90FLAGS} -procnum=8 -parallel=1 -omp"
+  fi
+  #
+  # --- Optimization ---
+  if [ "${F90_OPTIMIZE}" = '1' ]; then
+    # --- Standard ---
+    F90FLAGS="${F90FLAGS} -opt=ss -limit -pvfunc=2 -orphaned=1 -nopredicate -nestcheck=1 \
+              -pmfunc -pmpar -loglist -conti199"
+    F90FLAGS="${F90FLAGS} -autoinline=2"
+  fi
+  #
+  F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO} -Dmacro_SHORTrad_radOpVersion_Case=6 \
+            -source"
+  #
+elif [ "${MACHINE}" = 'i386'   ] || \
+     [ "${MACHINE}" = 'i686'   ] || \
+     [ "${MACHINE}" = 'x86_64' ]; then
+  # *** Intel/AMD processor ************************************************************************
+  if [ "${SYSTEM}" = 'Darwin' ]; then
+    MACSTRING="Macintosh system with ${MACMODEL}/${MACHINE} architecture"
+  else
+    MACSTRING="Linux system with ${MACHINE} architecture"
+  fi
+  echo "${MACSTRING}"
+  #
+  if [ "${F90_COMPILER}" = '' ]; then
+    if ( type -t pgf90 ); then
+      echo "PGI compiler detected"
+    elif ( type -t ifort ); then
+      echo "Intel compiler detected"
+      F90_COMPILER=ifort
+    else
+      F90_COMPILER=gfortran
+    fi
+  fi
+  #
+  if [ "${F90_COMPILER}" = ''          ] || \
+     [ "${F90_COMPILER}" = 'pgf90'     ] || \
+     [ "${F90_COMPILER}" = 'pgfortran' ] || \
+     [ "${F90_COMPILER}" = 'pgi'       ]; then
+    # --- Settings for PGI compiler ----------------------------------------------------------------
+    echo "  PGI compiler"
+    #
+    F90C="pgf90"
+    #
+    # --- Compiler version ---
+    F90VERSION=`${F90C} -V 2>/dev/null | sed -n -e "s/^pgf90 \([^ -]*\).*/\1/p"`
+    echo "  version=''${F90VERSION}''"
+    if [ "${F90VERSION}" = '' ]; then
+      echo "  No PGI compiler found: EXIT"
+      exit
+    fi
+    F90FULLVERSION=`${F90C} -V 2>/dev/null | grep ${F90C}`
+    #
+    # --- Swap bytes ---
+    F90FLAGS="-byteswapio"
+    #
+    # --- Parallelization ---
+    if [ "${F90OPENMP}" = '1' ]; then
+      F90FLAGS="${F90FLAGS} -mp"
+    fi
+    #
+    # --- Optimization ---
+    if [ "${F90_OPTIMIZE}" = '1' ]; then
+      if [ `echo "${F90VERSION}" | sed -e "s/^\(.\).*/\1/"` = '6' ]; then
+        VECTORFLAGS="-fastsse"
+      elif [ `echo "${F90VERSION}" | sed -e "s/^\(.\).*/\1/"` = '4' ]; then
+        VECTORFLAGS="-fastsse"
+      else
+        # VECTORFLAGS="-Mipa=fast -O4 -fast -Mcache_align"
+        VECTORFLAGS="-fast -Mcache_align"
+      fi
+      #
+      if [ "${MACMODEL}" = "Pentium III" ]; then
+        # --- Intel Pentium III ---
+        #
+        F90FLAGS="${F90FLAGS} ${VECTORFLAGS} -tp p6"
+      elif [ "${MACMODEL}" = "Intel Xeon" ]; then
+        # --- Intel Xeon ---
+        #
+        F90FLAGS="${F90FLAGS} ${VECTORFLAGS} -tp p7"
+      elif [ "${MACMODEL}" = "AMD Athlon" ]; then
+        # --- AMD Athlon XP/MP ---
+        #
+        F90FLAGS="${F90FLAGS} ${VECTORFLAGS} -tp athlonxp"
+      else
+        # --- Generic ---
+        #
+        F90FLAGS="${F90FLAGS} ${VECTORFLAGS}"
+      fi
+      #
+      # F90FLAGS="${F90FLAGS} -Mautoinline"
+      F90FLAGS="${F90FLAGS} -Minfo=inline -Minline=${F90INLINE1} -Minline=${F90INLINE2}"
+    elif [ "${F90_OPTIMIZE}" != '0' ]; then
+      # --- Use user-specified options ---
+      F90FLAGS="${F90FLAGS} ${F90_OPTIMIZE}"
+    fi
+    #
+    # --- Debugging ---
+    if [ "${F90_DEBUG}" = '1' ]; then
+      F90FLAGS="${F90FLAGS} -g -traceback"
+    elif [ "${F90_DEBUG}" != '0' ]; then
+      F90FLAGS="${F90FLAGS} -g -traceback -C"
+    fi
+    #
+    F90FLAGS="${F90FLAGS}"
+    F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO} -DLCFrad_raytas=2 \
+              -Drhd_hyd_entropyfix_p01=1"
+    #
+  elif [ "${F90_COMPILER}" = 'ifc'      ] || \
+       [ "${F90_COMPILER}" = 'ifort'    ] || \
+       [ "${F90_COMPILER}" = 'intel'    ] || \
+       [ "${F90_COMPILER}" = 'mpiifort' ]; then
+    # --- Settings for Intel compiler --------------------------------------------------------------
+    #
+    # --- Compiler version ---
+    if [ "${F90_COMPILER}" = 'ifc' ]; then
+      F90VERSION=$(ifc -V 2>&1 | sed -n -e "s/^.*Version \([0-9]*\)\..*/\1/p")
+      F90FULLVERSION=$(ifc -V 2>&1 | sed -n -e "s/^\(.*Version.*\)/\1/p")
+    else
+      F90VERSION=$(ifort -V 2>&1 | sed -n -e "s/^.*Version \([0-9]*\)\..*/\1/p")
+      F90FULLVERSION=$(ifort -V 2>&1 | sed -n -e "s/^\(.*Version.*\)/\1/p")
+    fi
+    F90LONGVERSION=$(echo ${F90FULLVERSION} | \
+                     sed -e "s/(R)//g" -e "s/^.*Version \([0-9\.]*\)\..*/\1/")
+    F90FULLVERSION=$(echo ${F90FULLVERSION} | \
+                     sed -e "s/(R)//g" -e "s/Intel Fortran Intel 64/Intel Fortran 64/")
+    echo "  compiler      =${F90_COMPILER}"
+    echo "  major version =${F90VERSION}"
+    echo "  version       =${F90LONGVERSION}"
+    #
+    if [ "${F90VERSION}" -le '7' ]; then
+      F90C=ifc
+    else
+      F90C=ifort
+    fi
+    if [ "${F90_COMPILER}" = 'ifort' ]; then
+      F90C=ifort
+    fi
+    if [ "${F90_COMPILER}" = 'mpiifort' ]; then
+      F90CMPI=mpiifort
+    fi
+    #
+    # --- Assume record length of one byte ---
+    if [ "${F90VERSION}" -gt '7' ]; then
+      F90FLAGS="-assume byterecl"
+    fi
+    #
+    if [ "${F90VERSION}" -lt 7 ]; then
+      # --- Only little endian ---
+      F90UIO="-Duio_switch_system_l01=1 -Duio_switch_native_l01=1 -Duio_switch_ieeele_l01=1 \
+              -Duio_switch_ieee_l01=1"
+    elif [ "${F90VERSION}" -lt 9 ]; then
+      # --- Swap bytes ---
+      echo "To enable proper byte swapping set (after compilation before running CO5BOLD):"
+      echo "> export F_UFMTENDIAN=big"
+    elif [ "${F90VERSION}" -lt 10 ]; then
+      # --- Swap bytes ---
+      echo "The old setting F_UFMTENDIAN=big is now obsolete"
+      F90FLAGS="${F90FLAGS} -convert big_endian"
+    else
+      # --- Use the Fortran 'convert' parameter in 'open' statement ---
+      F90UIO="-Duio_switch_system_l01=1 -Duio_switch_native_l01=1 -Duio_switch_ieeebe_l01=1 \
+              -Duio_switch_ieeele_l01=1 -Duio_switch_ieee_l01=1 -Duio_switch_open_l01=1"
+    fi
+    #
+    # --- Load VAX library, use preprocessor ---
+    if [ "${F90VERSION}" -lt 12 ]; then
+      F90FLAGS="${F90FLAGS} -Vaxlib -fpp"
+    else
+      F90FLAGS="${F90FLAGS} -fpp"
+    fi
+    #
+    if [ "${F90VERSION}" -gt 15 ]; then
+      # --- Activate Fortran2008 feature to get compiler information at runtime ---
+      F90FLAGS="${F90FLAGS} -Dmacro_system_CompInfoFunc_Active=1"
+    fi
+    #
+    # --- Parallelization ---
+    if [ "${F90OPENMP}" = '1' ]; then
+      if [ "${F90VERSION}" -lt 16 ]; then
+        F90FLAGS="${F90FLAGS} -openmp"
+      else
+        F90FLAGS="${F90FLAGS} -qopenmp"
+      fi
+      #
+      echo -e ${ColorWarn}
+      echo -e "In case of memory-allocation errors, increase the stack size per thread, e.g., by:"
+      echo -e "> export KMP_STACKSIZE=300m"
+      echo -e "or"
+      echo -e "> export OMP_STACKSIZE=300M"${ColorNo}
+    fi
+    #
+    # --- Optimization ---
+    if [ "${F90_OPTIMIZE}" = '1' ]; then
+      # echo "Machine model name:" ${MACMODEL}
+      if [ "${MACMODEL}" = "Pentium III" ] || [ "${MACMODEL}" = "AMD Athlon" ]; then
+        # --- Intel Pentium III, Athlon ---
+        #
+        F90FLAGS="${F90FLAGS} -O3 -tpp6 -xK"
+      elif [ "${MACMODEL}" = "AMD Opteron" ]; then
+        # --- AMD Opteron (tentative, or "-xP"?) ---
+        #
+        F90FLAGS="${F90FLAGS} -O3 -xW -fno-alias"
+      elif [ "${MACMODEL}" = "Intel Xeon" ]; then
+        # --- Intel Xeon ---
+        #
+        F90FLAGS="${F90FLAGS} -O3 -tpp7 -xW"
+      elif [ "${MACMODEL}" = "Intel Core" ]; then
+        # --- Intel Core ---
+        #
+        F90FLAGS="${F90FLAGS} -O3 -xP -fno-alias"
+      elif [ "${MACMODEL}" = "Intel Core2" ]; then
+        # --- Intel Core 2 ---
+        #
+        F90FLAGS="${F90FLAGS} -O3 -xT -fno-alias"
+      elif [ "${MACMODEL% CPU* [EX]5[56]*}" = "Intel Xeon" ]; then
+        # --- Intel Nehalem/Westmere, + optional Xeon E5 AVX support ---
+        #
+        F90FLAGS="${F90FLAGS} -O3 -xsse4.2 -axavx -axcore-avx2 -fp-model fast=1"
+      elif [ "${MACMODEL%-26[7]*}" = "Intel Xeon CPU E5" ]; then
+        # --- Intel Sandy Bridge/Ivy Bridge, uses only "-xavx" ---
+        #
+        F90FLAGS="${F90FLAGS} -O3 -xavx -axcore-avx2 -fp-model fast=1 -fma -fpie"
+        LDFLAGS="${LDFLAGS} -pie"
+      elif [ "${MACMODEL%-26[3-689][0-9] v[34]*}" = "Intel Xeon CPU E5" ]; then
+        # --- Intel Haswell/Broadwell, could also use "-xcore-avx2" only ---
+        #
+        F90FLAGS="${F90FLAGS} -O3 -xcore-avx2 -axcore-avx512 -fp-model fast=1 -fma -fpie"
+        LDFLAGS="${LDFLAGS} -pie"
+      elif [ "${MACMODEL%-21[2-9]*}"    = "Intel Xeon CPU W" -o \
+             "${MACMODEL% [34]1[0-1]*}" = "Intel Xeon CPU" ]; then
+        # --- Intel Skylake/Skylake-SP (speculative), uses "-xcore-avx512" ---
+        #
+        F90FLAGS="${F90FLAGS} -O3 -xcore-avx2 -axcore-avx512 -fp-model fast=1 -fma -fpie"
+        LDFLAGS="${LDFLAGS} -pie"
+      elif [ "${MACMODEL#Mac}" != "${MACMODEL}" ]; then
+        # --- Macintosh ---
+        #
+        # F90FLAGS="${F90FLAGS} -O3 -no-prec-div -fp-model fast=2"
+        if [ "${MACMODEL}" = 'MacPro3,1' ]; then
+          F90FLAGS="${F90FLAGS} -fast -axPTS -fno-alias"
+        else
+          F90FLAGS="${F90FLAGS} -O3 -no-prec-div"
+        fi
+        # use "-save" or "-auto"?
+      elif [ "${MACMODEL}" = 'generic' ]; then
+        # --- Generic ---
+        #
+        # F90FLAGS="${F90FLAGS} -O3 -axKWPTS"
+        F90FLAGS="${F90FLAGS} -O3"
+      else
+        # --- Generic ---
+        #
+        F90FLAGS="${F90FLAGS} -O3 -xHost"
+      fi
+      # F90FLAGS="${F90FLAGS} -ip -W0 -prof-gen"
+      # F90FLAGS="${F90FLAGS} -ip -W0 -prof-use"
+      F90FLAGS="${F90FLAGS} -ip -W0"
+      # F90FLAGS="${F90FLAGS} -ipo -W0 -static -xHost"
+    elif [ "${F90_OPTIMIZE}" = '2' ]; then
+      # --- Use generally good options for modern compilers and optimization for local machine ---
+      F90FLAGS="${F90FLAGS} -O3 -xHost -static-intel -ipo -qoverride-limits -W0"
+    elif [ "${F90_OPTIMIZE}" != '0' ]; then
+      # --- Use user-specified options ---
+      F90FLAGS="${F90FLAGS} ${F90_OPTIMIZE}"
+    fi
+    #
+    # --- Debugging ---
+    if [ "${F90_DEBUG}" != '0' ]; then
+      # F90FLAGS="${F90FLAGS} -g"
+      F90FLAGS="${F90FLAGS} -g -traceback"
+    fi
+    #
+    # F90REPORT="-vec_report1 -list -showinclude "
+    if [ "${MACHINE}" = 'i386' ]; then
+      F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO} -DLCFrad_raytas=2 \
+                -Dmacro_arrays_LocalVarType_Case=2 -Drhd_hyd_entropyfix_p01=1" 
+    elif [ "${MACMODEL}" = "Intel Core" ]; then
+      F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO} -DLCFrad_raytas=2 \
+                -Drhd_hyd_entropyfix_p01=1"
+    else
+      F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO} -DLCFrad_raytas=2 \
+                -Drhd_hyd_entropyfix_p01=1"
+    fi
+    #
+  elif [ "${F90_COMPILER}" = 'pathscale' ] || \
+       [ "${F90_COMPILER}" = 'pathf90'   ]; then
+    # --- Settings for PathScale compiler ----------------------------------------------------------
+    echo "  PathScale compiler"
+    #
+    F90C=pathf90
+    #
+    # --- Big Endian binary I/O ---
+    F90FLAGS="-byteswapio"
+    #
+    # --- Parallelization ---
+    if [ "${F90OPENMP}" = '1' ]; then
+      F90FLAGS="${F90FLAGS} -mp"
+    fi
+    #
+    # --- Optimization ---
+    if [ "${F90_OPTIMIZE}" = '1' ]; then
+      F90FLAGS="${F90FLAGS} -O3"
+      # F90FLAGS="${F90FLAGS} -Ofast"
+      # F90FLAGS="${F90FLAGS} -Ofast -ipa -FLIST:=on"
+      # F90FLAGS="${F90FLAGS} -Ofast -ipa -LNO:simd_verbose -LNO:vintr_verbose"
+    elif [ "${F90_OPTIMIZE}" != '0' ]; then
+      # --- Use user-specified options ---
+      F90FLAGS="${F90FLAGS} ${F90_OPTIMIZE}"
+    fi
+    #
+    # --- Debugging ---
+    if [ "${F90_DEBUG}" != '0' ]; then
+      F90FLAGS="${F90FLAGS} -g"
+    fi
+    #    
+    F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO} -DLCFrad_raytas=2 \
+              -Drhd_hyd_entropyfix_p01=1"
+    #
+  elif [ "${F90_COMPILER}"     = 'gnu'        ] || \
+       [ "${F90_COMPILER:0:8}" = 'gfortran'   ]; then
+    # --- Settings for GNU gfortran compiler -------------------------------------------------------
+    #
+    if [ "${F90_COMPILER}" = 'gfortran43' ]; then
+      F90C='gfortran-4.3'
+    elif [ "${F90_COMPILER}" = 'gnu' ]; then
+      F90C='gfortran'
+    else 
+      F90C="${F90_COMPILER}"
+    fi
+    #
+    # --- Compiler version ---
+    F90FULLVERSION=`${F90C} -v 2>&1 | grep "gcc version"`
+    F90LONGVERSION=$(echo ${F90FULLVERSION} | sed -ne "s/^.*gcc version \([^ ]*\).*/\1/p")
+    # F90VERSION=$(echo ${F90LONGVERSION} | sed -e "s/^\([0-9]*.[0-9]*\).*/\1/")
+    F90VERSION=$(echo ${F90LONGVERSION} | sed -e "s/^\([0-9]\).*/\1/")
+    echo "  compiler      =${F90_COMPILER}"
+    # echo "                 ${F90FULLVERSION}"
+    echo "  major version =${F90VERSION}"
+    echo "  version       =${F90LONGVERSION}"
+    #
+    # --- Big Endian binary I/O ---
+    F90FLAGS="-frecord-marker=4"
+    F90UIO="-Duio_switch_system_l01=2 -Duio_switch_native_l01=1 -Duio_switch_ieeebe_l01=1 \
+            -Duio_switch_ieeele_l01=1 -Duio_switch_ieee_l01=1 -Duio_switch_open_l01=1"
+    #
+    F90TIME=$(echo ${F90TIME} | sed -e "s/\(macro_system_TimeRateSource_Case=\)./\14/")
+    #
+    if [ "${F90VERSION}" -gt 6 ]; then
+      # --- Activate Fortran2008 feature to get compiler information at runtime ---
+      F90FLAGS="${F90FLAGS} -Dmacro_system_CompInfoFunc_Active=1"
+    fi
+    #
+    # --- Parallelization ---
+    if [ "${F90OPENMP}" = '1' ]; then
+      F90FLAGS="${F90FLAGS} -fopenmp"
+      echo -e ${ColorWarn}
+      echo -e "In case of memory-allocation errors, increase the stack size per thread e.g. by:"
+      echo -e "> export GOMP_STACKSIZE=100000"
+      echo -e "or"
+      echo -e "> export OMP_STACKSIZE=100M"${ColorNo}
+    fi
+    if  [ "${F90MPI}" = '1' ] && [ "${F90_COMPILER:0:8}" = 'gfortran' ]; then
+      FC="${F90_COMPILER}"
+    fi
+    #
+    # --- Optimization ---
+    if [ "${F90_OPTIMIZE}" = '1' ]; then
+      if [ "${F90_COMPILER}" = 'gfortran-4.7' ] || \
+         [ "${F90_COMPILER}" = 'gfortran-4.8' ] || \
+         [ "${F90_COMPILER}" = 'gfortran-4.9' ]; then
+        # --- Optimize for current architecture (newer branch) ---
+        # F90FLAGS="${F90FLAGS} -march=native -ffast-math -funroll-loops -O3 \
+        #           -finline-limit=600 -fstack-arrays -flto"
+        F90FLAGS="${F90FLAGS} -Ofast -march=native -funroll-loops -finline-limit=600 -flto"
+      else
+        # --- Try to find optimal settings for various architectures (older branch) ---
+        # F90FLAGS="${F90FLAGS} -O3 -falign-loops=16 -falign-jumps=16 -falign-functions=16 \
+        #           -funroll-loops"
+        F90FLAGS="${F90FLAGS} -O3 -funroll-loops"
+        if [ "${MACMODEL%[1-9],*}" = 'Macmini' ] || [ "${MACMODEL%[1-9],*}" = 'MacBook' ]; then
+          F90FLAGS="${F90FLAGS} -mmmx -msse2 -msse3 -m32 -mtune=prescott"
+          # " -fexternal-blas -fblas-matmul-limit=8"
+          # LDFLAGS="${LDFLAGS} -framework Accelerate"
+        elif [ "${MACMODEL%[1-9],*}" = 'MacPro'     ] || \
+             [ "${MACMODEL%[1-9],*}" = 'MacBookPro' ] || [ "${MACMODEL}" = 'Intel Core2' ]; then
+          F90FLAGS="${F90FLAGS} -mmmx -msse2 -msse3 -m64"
+          if [ "${F90_COMPILER}" = 'gfortran' ]; then
+            F90FLAGS="${F90FLAGS} -mtune=nocona"
+          else 
+            F90FLAGS="${F90FLAGS} -mtune=core2"
+          fi
+        fi
+        if [ "${F90_COMPILER}" = 'gfortran43' ]; then
+          F90FLAGS="${F90FLAGS} -fsched-interblock -fstrict-aliasing -ftree-loop-linear \
+                    -ftree-vectorize"
+        fi
+      fi
+    elif [ "${F90_OPTIMIZE}" = '2' ]; then
+      # --- Use generally good options for modern compilers and optimization for local machine ---
+      # F90FLAGS="${F90FLAGS} -Ofast -march=native -finline-limit=600 -flto"
+      F90FLAGS="${F90FLAGS} -Ofast -march=native -flto"
+    elif [ "${F90_OPTIMIZE}" != '0' ]; then
+      # --- Use user-specified options ---
+      F90FLAGS="${F90FLAGS} ${F90_OPTIMIZE}"
+    fi
+    #
+    # --- Debugging ---
+    if [ "${F90_DEBUG}" != '0' ]; then
+      # F90FLAGS="${F90FLAGS} -g"
+      F90FLAGS="${F90FLAGS} -g -fbacktrace"
+    fi
+    #    
+    F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO} -DLCFrad_raytas=2 \
+              -Drhd_hyd_entropyfix_p01=1"
+    #
+  elif [ "${F90_COMPILER}" = 'g95' ]; then
+    # --- Settings for GNU G95 compiler ------------------------------------------------------------
+    echo "  G95 compiler"
+    #
+    F90C=g95
+    #
+    # --- Compiler version ---
+    F90FULLVERSION=`${F90C} -v 2>&1 | grep "gcc version"`
+    echo "  version=${F90FULLVERSION}"
+    #
+    # --- Big Endian binary I/O ---
+    F90FLAGS="-fendian=big"
+    #
+    # --- The routine "system" is no longer external:   ---
+    # --- the standard sun module does not work anymore ---
+    F90UIO="-Duio_switch_system_l01=2 -Duio_switch_native_l01=1 -Duio_switch_ieeebe_l01=1 \
+            -Duio_switch_ieee_l01=1"
+    #
+    # --- Optimization ---
+    if [ "${F90_OPTIMIZE}" = '1' ]; then
+      F90FLAGS="${F90FLAGS} -O3"
+    elif [ "${F90_OPTIMIZE}" != '0' ]; then
+      # --- Use user-specified options ---
+      F90FLAGS="${F90FLAGS} ${F90_OPTIMIZE}"
+    fi
+    #
+    # --- Debugging ---
+    if [ "${F90_DEBUG}" != '0' ]; then
+      F90FLAGS="${F90FLAGS} -g"
+    fi
+    #    
+    F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO} -DLCFrad_raytas=2 \
+              -Drhd_hyd_entropyfix_p01=1"
+    #
+  elif [ "${F90_COMPILER}" = 'open64'  ] || \
+       [ "${F90_COMPILER}" = 'openf90' ] || \
+       [ "${F90_COMPILER}" = 'openf95' ]; then
+    # --- Settings for Open64 compiler -------------------------------------------------------------
+    echo "  Open64 compiler"
+    #
+    if [ "${F90_COMPILER}" = 'open64' ]; then
+      F90C=openf90
+    else
+      F90C="${F90_COMPILER}"
+    fi
+    #
+    # --- Compiler version ---
+    F90FULLVERSION=`${F90C} -version 2>&1 | sed -n -e "s/^\(.*Version.*\)/\1/p"`
+    echo "  version=${F90FULLVERSION}"
+    #
+    # --- Big Endian binary I/O ---
+    F90FLAGS="-byteswapio"
+    #
+    # --- Parallelization ---
+    if [ "${F90OPENMP}" = '1' ]; then
+      F90FLAGS="${F90FLAGS} -mp"
+    fi
+    #
+    # --- Optimization ---
+    if [ "${F90_OPTIMIZE}" = '1' ]; then
+      F90FLAGS="${F90FLAGS} -O3"
+    elif [ "${F90_OPTIMIZE}" != '0' ]; then
+      # --- Use user-specified options ---
+      F90FLAGS="${F90FLAGS} ${F90_OPTIMIZE}"
+    fi
+    #
+    # --- Debugging ---
+    if [ "${F90_DEBUG}" != '0' ]; then
+      F90FLAGS="${F90FLAGS} -g"
+    fi
+    #    
+    F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO} -DLCFrad_raytas=2 \
+              -Drhd_hyd_entropyfix_p01=1"
+    #
+  else
+    # --- Unknown compiler -------------------------------------------------------------------------
+    echo -e ${ColorError}"  Unknown compiler"${ColorNo}
+    #
+    F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO}"
+    #
+  fi
+  #
+elif [ "${MACHINE}" = 'IBM' ]; then
+  # *** IBM p690 (Power4 CPUs) *********************************************************************
+  MACMODEL="pwr4"
+  MACSTRING="IBM system with ${MACMODEL} architecture"
+  echo "${MACSTRING}"
+  #
+  F90C=xlf90
+  F90CMPI=mpixlf90
+  F77C=xlf
+  #
+  # F90FLAGS="-qsuffix=f=f90 -qsuffix=cpp=F90 -qarch=pwr4 -qtune=pwr4 -qlanglvl=90std -qfree=f90"
+  F90FLAGS="-qsuffix=f=f90 -qsuffix=cpp=F90 -qarch=pwr4 -qtune=pwr4 -qlanglvl=90std -qfree=f90"
+  # F90FLAGS="-qsuffix=f=f90 -qsuffix=cpp=F90 -qlanglvl=extended -q64 -qextname "
+  #
+  # --- Parallelization ---
+  if [ "${F90OPENMP}" = '1' ]; then
+    F90C=xlf90_r
+    F77C=xlf_r
+    # F90FLAGS="${F90FLAGS} -qsmp=noauto:omp"
+    F90FLAGS="${F90FLAGS} -qsmp=omp"
+  fi
+  # --- Optimization ---
+  if [ "${F90_OPTIMIZE}" = '1' ]; then
+    if [ "${MACMODEL}" = '' ]; then
+      ARCH="-qarch=auto -qtune=auto -qcache=auto"
+    else
+      ARCH="-qarch=${MACMODEL} -qtune=${MACMODEL}"
+    fi
+    # F90FLAGS="${F90FLAGS} -O2 ${ARCH} -Q+${F90INLINE1},${F90INLINE2}"
+    F90FLAGS="${F90FLAGS} -O3 ${ARCH} -Q -Q+${F90INLINE1},${F90INLINE2}"
+  elif [ "${F90_OPTIMIZE}" != '0' ]; then
+    # --- Use user-specified options ---
+    F90FLAGS="${F90FLAGS} ${F90_OPTIMIZE}"
+  fi
+  #
+  # --- Debugging ---
+  if [ "${F90_DEBUG}" != '0' ]; then
+    F90FLAGS="${F90FLAGS} -g"
+  fi
+  #
+  F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO}"
+  #
+  F90FLAGS=`echo "${F90FLAGS}" | sed -e "s/\(-D[^ ]*\)/-WF,\1/g"`
+  #
+elif [ "${MACHINE}" = 'IBM00'          ] || \
+     [ "${MACHINE}" = '006030464C00'   ] || \
+     [ "${MACHINE}" = '0034CD0A4C00'   ] || \
+     [ "${MACHINE}" = '001B5D4F4C00'   ] || \
+     [ "${MACHINE}" = '00CD35814C00'   ] || \
+     [ "${MACHINE}" = 'PowerPC_POWER6' ]; then
+  # *** CINES IBM **********************************************************************************
+  MACSTRING="IBM system with ${MACHINE} architecture"
+  echo "${MACSTRING}"
+  #
+  F90C=xlf90
+  F90CMPI=mpixlf90
+  F77C=xlf
+  #
+  F90UIO="-Duio_switch_system_l01=2 -Duio_switch_native_l01=1 -Duio_switch_ieeebe_l01=1 \
+          -Duio_switch_ieee_l01=1"
+  #
+  # F90FLAGS="-qsuffix=f=f90 -qsuffix=cpp=F90 -qlanglvl=90std -qfree=f90"
+  # F90FLAGS="-qsuffix=f=f90 -qsuffix=cpp=F90 -qlanglvl=extended -qsmallstack"
+  # F90FLAGS="-qsuffix=f=f90 -qsuffix=cpp=F90 -qlanglvl=extended -bmaxstack:0x10000000 \
+  #           -bmaxdata:0x80000000"
+  # F90FLAGS="-qsuffix=f=f90 -qsuffix=cpp=F90 -qlanglvl=extended -q64 -qextname=flush:etime \
+  #           -brename=call_system:system"
+  F90FLAGS="-qsuffix=f=f90 -qsuffix=cpp=F90 -qlanglvl=extended -q64 -qextname=flush:etime"
+  #
+  # --- Parallelization ---
+  if [ "${F90OPENMP}" = '1' ]; then
+    F90C=xlf90_r
+    F77C=xlf_r
+    F90FLAGS="${F90FLAGS} -qsmp=noauto:omp"
+    # F90FLAGS="${F90FLAGS} -qsmp=omp"
+  fi
+  # --- Optimization ---
+  if [ "${F90_OPTIMIZE}" = '1' ]; then
+    if [ "${MACMODEL}" = '' ]; then
+      ARCH="-qarch=auto -qtune=auto -qcache=auto"
+    else
+      ARCH="-qarch=${MACMODEL} -qtune=${MACMODEL}"
+    fi
+    # F90FLAGS="${F90FLAGS} -O2 ${ARCH} -Q+${F90INLINE1},${F90INLINE2}"
+    # F90FLAGS="${F90FLAGS} -O3 ${ARCH} -Q -Q+${F90INLINE1},${F90INLINE2}"
+    # F90FLAGS="${F90FLAGS} -O3 ${ARCH} -qmaxmem=-1 -Q -Q+${F90INLINE1},${F90INLINE2}"
+    # F90FLAGS="${F90FLAGS} -O3 ${ARCH} -qhot -qipa -qmaxmem=-1 -Q -Q+${F90INLINE1},${F90INLINE2}"
+    # F90FLAGS="${F90FLAGS} -O4 ${ARCH} -Q -Q+${F90INLINE1},${F90INLINE2}"
+    # F90FLAGS="${F90FLAGS} -O5 ${ARCH} -Q -Q+${F90INLINE1},${F90INLINE2}"
+    F90FLAGS="${F90FLAGS} -O5 ${ARCH} -qalias=nopteovrlp:noaryovrlp -Q \
+              -Q+${F90INLINE1},${F90INLINE2}"
+  elif [ "${F90_OPTIMIZE}" != '0' ]; then
+    # --- Use user-specified options ---
+    F90FLAGS="${F90FLAGS} ${F90_OPTIMIZE}"
+  fi
+  #
+  # --- Debugging ---
+  if [ "${F90_DEBUG}" != '0' ]; then
+    F90FLAGS="${F90FLAGS} -g"
+  fi
+  #
+  F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO}"
+  #
+  # --- Change prefix for preprocessor macros ---
+  F90FLAGS=`echo "${F90FLAGS}" | sed -e "s/\(-D[^ ]*\)/-WF,\1/g"`
+  #
+elif [ "${MACHINE}" = 'Power Macintosh' ] ; then
+  # *** Old Apple **********************************************************************************
+  MACSTRING="Apple system with ${MACMODEL}/${MACHINE} architecture"
+  echo "${MACSTRING}"
+  #
+  if [ "${F90_COMPILER}" = 'gfortran' ] || [ "${F90_COMPILER}" = 'gfortran43' ]; then
+    # --- Settings for GNU gfortran compiler -------------------------------------------------------
+    echo "  gfortran compiler"
+    #
+    if [ "${F90_COMPILER}" = 'gfortran43' ]; then
+      F90C=gfortran-4.3
+    else 
+      F90C=gfortran
+    fi
+    #
+    # --- Compiler version ---
+    F90FULLVERSION=`gfortran -v 2>&1 | sed -n -e "s/^.*\(gcc version.*\)/\1/p"`
+    echo "  version=${F90FULLVERSION}"
+    #
+    # --- Binary I/O - machine is already Big Endian ---
+    F90FLAGS="-frecord-marker=4"
+    F90UIO="-Duio_switch_system_l01=2 -Duio_switch_native_l01=1 -Duio_switch_ieeebe_l01=1 \
+            -Duio_switch_ieee_l01=1"
+    #
+    F90TIME=$(echo ${F90TIME} | sed -e "s/\(macro_system_TimeRateSource_Case=\)./\14/")
+    #
+    # --- Parallelization ---
+    if [ "${F90OPENMP}" = '1' ]; then
+      F90FLAGS="${F90FLAGS} -fopenmp"
+      echo -e ${ColorWarn}
+      echo -e "In case of memory-allocation errors, increase the stack size per thread e.g. by:"
+      echo -e "> export GOMP_STACKSIZE=100000"
+      echo -e "or"
+      echo -e "> export OMP_STACKSIZE=100M"${ColorNo}
+    fi
+    #
+    # --- Optimization ---
+    if [ "${F90_OPTIMIZE}" = '1' ]; then
+      if [ "${MACMODEL%,*}" = 'PowerMac7' ]; then
+        # --- ppc970 (G5) ---
+        F90FLAGS="${F90FLAGS} -O3 -falign-loops=16 -falign-jumps=16 -falign-functions=16 \
+                  -funroll-loops -fsched-interblock -mdynamic-no-pic -fstrict-aliasing \
+                  -ftree-loop-linear -ftree-vectorize -m64 -mcpu=G5 -mtune=G5 -mpowerpc64"
+      elif [ "${MACMODEL%[1-9],*}" = 'PowerMac' ] || [ "${MACMODEL%[1-9],*}" = 'PowerBook' ]; then
+        # --- ppc74xx (G4) ---
+        F90FLAGS="${F90FLAGS} -O3 -falign-loops=16 -falign-jumps=16 -falign-functions=16 \
+                  -funroll-loops -fsched-interblock -mdynamic-no-pic -fstrict-aliasing \
+                  -ftree-loop-linear -ftree-vectorize -m32 -mcpu=G4 -mtune=G4 -mpowerpc"
+      elif [ "${F90_MACHINE}" = 'local' ]; then
+        F90FLAGS="${F90FLAGS} -O3 -mtune=native"
+      else
+        F90FLAGS="${F90FLAGS} -O3 -mtune=generic"
+      fi
+    elif [ "${F90_OPTIMIZE}" != '0' ]; then
+      # --- Use user-specified options ---
+      F90FLAGS="${F90FLAGS} ${F90_OPTIMIZE}"
+    fi
+    #
+    # --- Debugging ---
+    if [ "${F90_DEBUG}" != '0' ]; then
+      F90FLAGS="${F90FLAGS} -g"
+    fi
+    #    
+    F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO} -DLCFrad_raytas=2 \
+              -Drhd_hyd_entropyfix_p01=1"
+    #
+  else
+    # --- Settings for IBM Xlf compiler ------------------------------------------------------------
+    F90C=xlf90
+    F77C=xlf
+    #
+    F90UIO="-Duio_switch_system_l01=2 -Duio_switch_native_l01=1 -Duio_switch_ieeebe_l01=1 \
+            -Duio_switch_ieee_l01=1"
+    #
+    # F90FLAGS="-Chopt -sx5 -dw -float0 \
+    #           -Wf'-L nostdout -L fmtlist -L inclist -L mrgmsg -L transform' \
+    #           -Wf'-M noflunf -M noinv -Mnoinexact -M setall' \
+    #           -pi exp=rhd_shortrad_operator exp=rhd_shortrad_dtauop \
+    #           ${F90MODULES} ${F90TIME} ${F90UIO} -DLCFrad_raytas=1"
+    F90FLAGS="-qsuffix=f=f90 -qsuffix=cpp=F90 -qlanglvl=extended -qextname=flush:etime"
+    #
+    # --- Parallelization ---
+    if [ "${F90OPENMP}" = '1' ]; then
+      F90C=xlf90_r
+      F77C=xlf_r
+      F90FLAGS="${F90FLAGS} -qsmp=omp"
+    fi
+    # --- Optimization ---
+    if [ "${F90_OPTIMIZE}" = '1' ]; then
+      if [ "${MACMODEL}" = '' ]; then
+        ARCH="-qarch=auto -qtune=auto -qcache=auto"
+      else
+        ARCH="-qarch=${MACMODEL} -qtune=${MACMODEL}"
+      fi
+      F90FLAGS="${F90FLAGS} -O3 ${ARCH} -Q -Q+${F90INLINE1},${F90INLINE2}"
+    elif [ "${F90_OPTIMIZE}" != '0' ]; then
+      # --- Use user-specified options ---
+      F90FLAGS="${F90FLAGS} ${F90_OPTIMIZE}"
+    fi
+    #
+    # --- Debugging ---
+    if [ "${F90_DEBUG}" != '0' ]; then
+      F90FLAGS="${F90FLAGS} -g"
+    fi
+    #
+    F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO}"
+    #
+    # --- Change prefix for preprocessor macros ---
+    F90FLAGS=`echo "${F90FLAGS}" | sed -e "s/\(-D[^ ]*\)/-WF,\1/g"`
+  fi
+  #
+elif [ "${MACHINE}" = 'SX-5' ] || \
+     [ "${MACHINE}" = 'SX-6' ] || \
+     [ "${MACHINE}" = 'SX-8' ]; then
+  # *** NEC SX family ******************************************************************************
+  MACSTRING="NEC system with ${MACHINE} architecture"
+  echo "${MACSTRING}"
+  #
+  F90C=sxf90
+  #
+  # --- Use preprocessor and keep processed files ---
+  F90FLAGS="-EP"
+  #
+  # --- Create detailed compiler messages ---
+  # F90FLAGS="${F90FLAGS} -Wf,-pvctl fullmsg"
+  #
+  # --- Performance monitor prof ---
+  # if [ "${F90_PERFMON}" = '1' ]; then
+  #   F90FLAGS="${F90FLAGS} -p"
+  # fi
+  #
+  # --- Performance information ftrace ---
+  # if [ "${F90_FTRACE}" = '1' ]; then
+  #   F90FLAGS="${F90FLAGS} -ftrace"
+  # fi
+  #
+  # --- Parallelization ---
+  if [ "${F90OPENMP}" = '1' ]; then
+    F90FLAGS="${F90FLAGS} -P openmp"
+  fi
+  #
+  # --- Optimization ---
+  if [ "${F90_OPTIMIZE}" = '1' ]; then
+    # --- Possible optimization levels: hopt vopt vsafe sopt ssafe debug ---
+    F90FLAGS="${F90FLAGS} -Chopt"
+    # F90FLAGS="${F90FLAGS} -Cvopt"
+  elif [ "${F90_OPTIMIZE}" != '0' ]; then
+    # --- Use user-specified options ---
+    F90FLAGS="${F90FLAGS} ${F90_OPTIMIZE}"
+  fi
+  #
+  # --- Debugging ---
+  if [ "${F90_DEBUG}" != '0' ]; then
+    F90FLAGS="${F90FLAGS} -Cdebug -p"   
+  fi
+  #
+  # --- Inlining --- 
+  if  [ "${F90_NEC_INLINE}" = '1' ]; then
+    F90NECINL="-pi exp=rhd_hyd_avg exp=rhd_hyd_upwind exp=rhd_hyd_pred0 exp=rhd_hyd_predm \
+               exp=rhd_hyd_predp exp=rhd_hyd_alpha exp=rhd_hyd_constanteq exp=rhd_hyd_minmodeq \
+               exp=rhd_hyd_minmod exp=rhd_hyd_vanleereq exp=rhd_hyd_vanleer \
+               exp=rhd_hyd_superbeeeq exp=rhd_hyd_superbee exp=rhd_hyd_ppeq \
+               exp=rhd_hyd_pp exp=rhd_hyd_hdflux \
+               exp=rhd_shortrad_operator exp=rhd_shortrad_dtauop "
+  else
+    F90NECINL=" "
+  fi
+  #
+  # --- More options ---
+  if [ "${MACHINE}" = 'SX-5' ]; then 
+    F90FLAGS="${F90FLAGS} -sx5"  
+  fi
+  #
+  if [ "${MACHINE}" = 'SX-6' ]; then 
+    F90FLAGS="${F90FLAGS} -sx6"  
+  fi
+  #
+  if [ "${MACHINE}" = 'SX-8' ]; then 
+    F90FLAGS="${F90FLAGS} -sx8"  
+  fi
+  #
+  # --- The "magic" option ---
+  F90FLAGS="${F90FLAGS} -Wl'-Z 8G -m'"
+  #
+  F90FLAGS="${F90FLAGS} -dw -float0 \
+            -Wf'-L nostdout -L fmtlist map summary transform' \
+            -Wf'-L inclist -L mrgmsg -M noflunf -M noinv -M noinexact -M setall' \
+            ${F90NECINL} ${F90MODULES} ${F90TIME} ${F90UIO} -DLCFrad_raytas=1 \
+            -Drhd_hyd_entropyfix_p01=1 -Drhd_hyd_upwind_p01=1 -Dmacro_gasinter_LoopType_Case=2"
+  #
+  # if [ "${F90_LA}" = '1' ]; then 
+  #   F90FLAGS="${F90FLAGS} -Drhd_la_tune01"
+  # fi
+  #
+elif [ "${MACHINE}" = 'IP35' ] && [ `uname -n` = 'UKAFF' ]; then
+  # *** SGI (UKAFF) ********************************************************************************
+  MACSTRING="UKAFF Origin 3800 system with ${MACHINE} architecture"
+  echo "${MACSTRING}"
+  #
+  # --- Preprocessor: macro expansion ---
+  F90FLAGS="-LNO:cs1=32k:ls1=32:cs2=8M:ls2=128 -macro_expand"
+  #
+  # --- Parallelization ---
+  if [ "${F90OPENMP}" = '1' ]; then
+    F90FLAGS="${F90FLAGS} -mp"
+  fi
+  #
+  # --- Optimization ---
+  if [ "${F90_OPTIMIZE}" = '1' ]; then
+    F90FLAGS="${F90FLAGS} -Ofast -IPA:plimit=5500 -OPT:Olimit=0"
+    F90FLAGS="${F90FLAGS} -INLINE:aggressive=ON -INLINE:list -INLINE:preempt=ON \
+              -INLINE:must=${F90INLINE1} -INLINE:must=${F90INLINE2}"
+  elif [ "${F90_OPTIMIZE}" != '0' ]; then
+    # --- Use user-specified options ---
+    F90FLAGS="${F90FLAGS} ${F90_OPTIMIZE}"
+  fi
+  #
+  # --- Debugging ---
+  if [ "${F90_DEBUG}" != '0' ]; then
+    F90FLAGS="${F90FLAGS} -g"
+  fi
+  #
+  F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO}"
+  #
+elif [ "${MACHINE}" = 'IP35' ]; then
+  # *** SGI ****************************************************************************************
+  MACSTRING="Generic SGI system with ${MACHINE} architecture"
+  echo "${MACSTRING}"
+  #
+  # --- Preprocessor: macro expansion ---
+  F90FLAGS="-macro_expand"
+  #
+  # --- Parallelization ---
+  if [ "${F90OPENMP}" = '1' ]; then
+    F90FLAGS="${F90FLAGS} -mp"
+  fi
+  #
+  # --- Optimization ---
+  if [ "${F90_OPTIMIZE}" = '1' ]; then
+    # F90FLAGS="${F90FLAGS} -Ofast -OPT:Olimit=0 -LANG: heap_allocation_threshold=100000"
+    # F90FLAGS="${F90FLAGS} -Ofast -IPA:plimit=5500 -OPT:Olimit=0"
+    # F90FLAGS="${F90FLAGS} -Ofast -IPA:plimit=5500 -OPT:Olimit=0 \
+    #           -LANG: heap_allocation_threshold=100000"
+    F90FLAGS="${F90FLAGS} -Ofast -IPA:plimit=5500 -OPT:Olimit=0 \
+             -LANG: heap_allocation_threshold=100000 -CG:longbranch_limit=60000" 
+    # F90FLAGS="${F90FLAGS} -O0"
+    # F90FLAGS="${F90FLAGS} -INLINE:list -INLINE:preempt=ON -INLINE:must=${F90INLINE1} \
+    #           -INLINE:must=${F90INLINE2}"
+    F90FLAGS="${F90FLAGS} -INLINE:aggressive=ON -INLINE:list -INLINE:preempt=ON \
+              -INLINE:must=${F90INLINE1} -INLINE:must=${F90INLINE2}"
+  elif [ "${F90_OPTIMIZE}" != '0' ]; then
+    # --- Use user-specified options ---
+    F90FLAGS="${F90FLAGS} ${F90_OPTIMIZE}"
+  fi
+  #
+  # --- Debugging ---
+  if [ "${F90_DEBUG}" != '0' ]; then
+    F90FLAGS="${F90FLAGS} -g"
+  fi
+  #
+  F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO}"
+  #
+elif [ "${MACHINE}" = 'sun4u' ] || \
+     [ "${MACHINE}" = 'i86pc' ]; then
+  # *** Sun ****************************************************************************************
+  MACSTRING="Sun system with ${MACHINE} architecture"
+  echo "${MACSTRING}"
+  #
+  # --- Parallelization ---
+  if [ "${F90OPENMP}" = '1' ]; then
+    if [ "${F90_DEBUG}" = '0' ]; then
+      F90FLAGS="-xopenmp=parallel"
+    else
+      F90FLAGS="-xopenmp=noopt"
+    fi
+  else
+    F90FLAGS=""
+  fi
+  #
+  # --- Big Endian binary I/O ---
+  F90FLAGS="${F90FLAGS} -xfilebyteorder=big8:%all"
+  #
+  # --- Optimization ---
+  if [ "${F90_OPTIMIZE}" = '1' ]; then
+    F90FLAGS="${F90FLAGS} -fast"
+    F90FLAGS="${F90FLAGS} -inline=${F90INLINE1},${F90INLINE2}"
+  elif [ "${F90_OPTIMIZE}" != '0' ]; then
+    # --- Use user-specified options ---
+    F90FLAGS="${F90FLAGS} ${F90_OPTIMIZE}"
+  fi
+  #
+  # --- Debugging ---
+  if [ "${F90_DEBUG}" != '0' ]; then
+    F90FLAGS="${F90FLAGS} -g"
+  fi
+  #
+  F90FLAGS="${F90FLAGS} ${F90MODULES} ${F90TIME} ${F90UIO} -DLCFrad_raytas=2 \
+            -Drhd_hyd_entropyfix_p01=1 -Dmacro_timing_CountFactor_Value=10000"
+  #
+  # if [ "${F90_LA}" = '1' ]; then 
+  #   F90FLAGS="${F90FLAGS} -Drhd_la_tune01"
+  # fi
+  F90EOSFLAGS='-xvector=no'
+  #
+elif [ "${MACHINE}" = 'armv4l' ]; then
+  # *** Sharp Zaurus *******************************************************************************
+  MACSTRING="Zaurus?!"
+  echo "${MACSTRING}"
+  #
+  F90FLAGS=""
+  #
+elif [ "${MACHINE}" = 'empty' ]; then
+  # *** No explicit machine ************************************************************************
+  MACSTRING="empty"
+  echo "${MACSTRING}"
+  #
+  F90FLAGS=""
+  #
+elif [ "${MACHINE}" = 'dummy' ]; then
+  # *** Dummy machine ******************************************************************************
+  MACSTRING="dummy"
+  echo "${MACSTRING}"
+  #
+  F90FLAGS="${F90MODULES} ${F90TIME} ${F90UIO}"
+  #
+else
+  # *** Unknown machine ****************************************************************************
+  echo -e ${ColorError}'Unknown architecture' ${MACHINE} ': EXIT'${ColorNo}
+  exit
+  #
+fi
+#
+# --- Add explicitly specified and MPI flags ---
+F90FLAGS="${F90_PREFLAGS} ${F90FLAGS} ${F90MPIFLAGS} ${F90_POSTFLAGS}"
+#
+# --- Remove multiple blanks ---
+F90FLAGS=$(echo "${F90FLAGS}" | sed -e "s/  */ /g")
+#
+if [ "${F90MPI}" = '1' ]; then
+  # --- Change compiler name if mpi is requested ---
+  F90C=${F90CMPI}
+fi
+if [ "${F77C}" = '' ]; then
+  F77C=${F90C}
+fi
+# --- Print information ---
+rm -f compiler_flags.info
+echo
+F90STRING="${F90C} ${F90FLAGS}"
+echo -e ${ColorMess}"Compiler call:"${ColorNo}
+echo "${F90STRING}"
+echo
+echo -e ${ColorMess}"Writing compiler name and flags into file${ColorNo} compiler_flags.info."
+FIRST=1
+OUTSTR="dummy"
+until [ -z "${OUTSTR}" ]; do
+  if [ "${FIRST}" = '1' ]; then
+    ADD=80
+    SPACE=''
+  else
+    ADD=78
+    SPACE='  '
+  fi
+  LAST=`expr ${FIRST} + ${ADD}`
+  OUTSTR=`echo "${F90STRING}" | cut -b ${FIRST}-${LAST}`
+  if [ -n "${OUTSTR}" ]; then
+    # echo "write(gl%nc_p,'(A)')" '"'"${SPACE}${OUTSTR}"'"' >> compiler_flags.info
+    echo "write(ncp,'(A)')" '"'"${SPACE}${OUTSTR}"'"' >> compiler_flags.info
+  fi
+  FIRST=`expr ${LAST} + 1`
+done
+if [ "${F90FULLVERSION}" != '' ]; then
+  # echo "write(gl%nc_p,'(A)')" '"'"${F90FULLVERSION}"'"' >> compiler_flags.info
+  echo "write(ncp,'(A)')" '"'"${F90FULLVERSION}"'"' >> compiler_flags.info
+fi
+#
+# --- Set UIO mac module ---
+UIOMAC=uio_mac_module
+#
+# === Write Makefile ===============================================================================
+echo
+#
+# --- Check for old Makefile ---
+if [ -f Makefile ]; then
+  echo -e "Makefile ${ColorMess}already exists. Appending it to${ColorNo} Makefile_old."
+  echo
+  cat Makefile >> Makefile_old
+fi
+#
+# F90LINKFLAGS=`echo "${F90FLAGS}" | sed -e "s/ -D[^ ]*//g" -e "s/^-D[^ ]*//g"`
+# F90LINKFLAGS=${F90FLAGS}
+#
+# --- Write header of Makefile (substitute variables ) ---
+cat >Makefile <<EOF
+###############################################################################
+### Makefile for ${MACSTRING}
+### Automatically generated by configure script: `date`
+
+PRESUF=${PRESUF}
+F77C=${F77C}
+F90C=${F90C}
+# FC=${FC}
+F90FLAGS=${F90FLAGS}
+F90EOSFLAGS=${F90EOSFLAGS}
+LDFLAGS=${LDFLAGS}
+
+RADOBJ=${F90_RADOBJ}
+RADLIB=${F90_RADLIB}
+
+LAOBJ=${F90_LAOBJ}
+LALIB=${F90_LALIB}
+
+CHEMOBJ=${F90_CHEMOBJ}
+CHEMLIB=${F90_CHEMLIB}
+
+KROMEOBJ=${F90_KROMEOBJ}
+KROMELIB=${F90_KROMELIB}
+
+HIONOBJ=${F90_HIONOBJ}
+HIONLIB=${F90_HIONLIB}
+
+DUSTOBJ=${F90_DUSTOBJ}
+DUSTLIB=${F90_DUSTLIB}
+
+MHDOBJ=${F90_MHDOBJ}
+MHDLIB=${F90_MHDLIB}
+
+TWEAKOBJ=${F90_TWEAKOBJ}
+TWEAKLIB=${F90_TWEAKLIB}
+TWEAKSRC=${F90_TWEAKSRC}
+SCALEOBJ=${F90_SCALEOBJ}
+SCALESRC=${F90_SCALESRC}
+
+UNITTESTFLAGS=${F90_UNITTESTFLAGS}
+UNITTESTOBJ=${F90_UNITTESTOBJ}
+UNITTEST=${F90_UNITTEST}
+
+EOF
+#
+# --- Set paths ---
+if [ "${F90_BASEPATH}" != '' ]; then
+cat >>Makefile <<EOF
+# === Paths ===
+TIMESRCPATH=${TIMESRCPATH}
+CONSRCPATH=${CONSRCPATH}
+UIOSRCPATH=${UIOSRCPATH}
+STRSRCPATH=${STRSRCPATH}
+SYSSRCPATH=${SYSSRCPATH}
+LASRCPATH=${LASRCPATH}
+DESSRCPATH=${DESSRCPATH}
+EOSSRCPATH=${EOSSRCPATH}
+OPTASRCPATH=${OPTASRCPATH}
+RADSRCPATH=${RADSRCPATH}
+RHDSRCPATH=${RHDSRCPATH}
+RHDBSRCPATH=${RHDBSRCPATH}
+CHEMSRCPATH=${CHEMSRCPATH}
+KROMESRCPATH=${KROMESRCPATH}
+HIONSRCPATH=${HIONSRCPATH}
+DUSTSRCPATH=${DUSTSRCPATH}
+MHDSRCPATH=${MHDSRCPATH}
+TWEAKSRCPATH=${TWEAKSRCPATH}
+UNITTSRCPATH=${UNITTSRCPATH}
+SPECSRCPATH=${SPECSRCPATH}
+
+UIOMAC=${UIOMAC}
+
+EOF
+fi
+#
+# --- Write rest of Makefile (untouched) ---
+cat >>Makefile <<'EOF'
+# === Suffix handling =========================================================
+
+# --- Suffixes ---
+.SUFFIXES:
+.SUFFIXES: .exe .o .f90 .f .F90
+
+# --- Suffix rules ---
+.F90.o:
+	$(F90C) $(F90FLAGS) -c $<
+.f90.o:
+	$(F90C) $(F90FLAGS) -c $<
+.f.o:
+	$(F77C) $(F90FLAGS) -c $<
+
+
+# ### RHD #####################################################################
+
+# === Libraries ===============================================================
+OBJ_RHD=rhd_lhdrad_module.o rhd_shortrad_module.o rhd_baserad_module.o \
+	rhd_vis_module.o rhd_hyd_module.o \
+	rhd.o
+SRC_RHD=rhd_lhdrad_module.$(PRESUF) rhd_shortrad_module.$(PRESUF) \
+	rhd_shortrad_operator00.f90 rhd_shortrad_operator01.f90 rhd_shortrad_operator02.f90 \
+	rhd_shortrad_operator03.f90 rhd_shortrad_operator04.f90 rhd_shortrad_operator05.f90 \
+	rhd_shortrad_operator06.f90 rhd_shortrad_operator08.f90 rhd_shortrad_operator16.f90 \
+	rhd_shortrad_dtauop01.f90 rhd_shortrad_dtauop02.f90 \
+	rhd_shortrad_bound01.f90 \
+	rhd_baserad_module.f90 rhd_baseradUT_module.f90 \
+	rhd_vis_module.$(PRESUF) rhd_hyd_module.$(PRESUF) \
+	rhd.$(PRESUF)
+
+# === Dependencies ============================================================
+
+RHD: rhd.exe
+	sleep 1
+	touch RHD
+
+# --- All programs (exe-files, escept UT) ---
+all: RHD SPEC
+
+# --- Full commands for the main executable ---
+
+rhd.exe: rhd.o
+	$(F90C) $(F90FLAGS) $(LDFLAGS) -o ${@} \
+	  uio_base_module.o $(UIOMAC).o uio_bulk_module.o uio_filedef_module.o \
+	  gasinter_routines.o \
+	  str_module.o system_module.o \
+	  timing_module.o timing_uio_module.o \
+	  opta_par_module.o opta_routines.o opta_dust.o \
+	  const_module.o \
+	  rhd_gl_module.o rhd_action_module.o rhd_prop_module.o \
+	    rhd_meankind_module.o rhd_mean_module.o rhd_box_module.o rhd_wrk_module.o \
+	    rhd_bound_module.o rhd_dat_module.o rhd_io_module.o rhd_mpi_module.o \
+	    rhd_sub_module.o rhd_rec_module.o rhd_phys_module.o \
+	  rhd_vis_module.o rhd_hyd_module.o \
+	  $(RADOBJ) $(LAOBJ) $(DESOBJ) $(CHEMOBJ) $(KROMEOBJ) $(HIONOBJ) $(DUSTOBJ) $(MHDOBJ) \
+	    $(TWEAKOBJ) $(SCALEOBJ) \
+	rhd.o
+
+# --- Dependencies on object files and libraries ---
+
+rhd.o: TIME UIO EOS OPTA STR SYS RHDB \
+	rhd_vis_module.o rhd_hyd_module.o \
+	$(RADLIB) $(LALIB) $(DESLIB) $(CHEMLIB) $(KROMELIB) $(HIONLIB) $(DUSTLIB) $(MHDLIB) $(TWEAKLIB) \
+	rhd.$(PRESUF)
+
+rhd_hyd_module.o: CONS EOS RHDB timing_module.o rhd_vis_module.o \
+	      rhd_hyd_module.$(PRESUF)
+
+rhd_vis_module.o: CONS EOS RHDB timing_module.o \
+	      rhd_vis_module.$(PRESUF)
+
+rhd_baserad_module.o: CONS \
+	      rhd_baserad_module.f90
+
+rhd_baseradUT_module.o: UT_module.o \
+	      rhd_baseradUT_module.f90
+
+rhd_lhdrad_module.o: CONS EOS OPTA CUB RHDB timing_module.o \
+	      rhd_lhdrad_module.$(PRESUF)
+
+rhd_shortrad_module.o: CONS EOS OPTA RHDB timing_module.o \
+	      rhd_baserad_module.o \
+	      rhd_shortrad_operator00.f90 rhd_shortrad_operator01.f90 rhd_shortrad_operator02.f90 \
+	      rhd_shortrad_operator03.f90 rhd_shortrad_operator04.f90 rhd_shortrad_operator05.f90 \
+	      rhd_shortrad_operator06.f90 rhd_shortrad_operator08.f90 rhd_shortrad_operator16.f90 \
+	      rhd_shortrad_dtauop01.f90 rhd_shortrad_dtauop02.f90 \
+	      rhd_shortrad_bound01.f90 \
+	      rhd_shortrad_module.$(PRESUF)
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_RHD):
+	rm -f $@
+	ln -s $(RHDSRCPATH)/$@ .
+
+
+# ### UNITT ###################################################################
+
+# --- Libraries ---
+# OBJ_UNITT=rhdut.o
+SRC_UNITT=UT_module.$(PRESUF) rhdut.$(PRESUF)
+
+# --- Dependencies ---
+
+UT: rhdut.exe
+
+rhdut.exe: rhdut.o
+	$(F90C) $(F90FLAGS) $(UNITTESTFLAGS) $(LDFLAGS) -o ${@} \
+	  UT_module.o \
+	  rhd_gl_module.o rhd_action_module.o \
+	    const_module.o \
+	$(UNITTESTOBJ) \
+	  rhdut.o
+
+rhdut.o: UT_module.o \
+	  rhd_gl_module.o rhd_action_module.o \
+	    const_module.o \
+	  $(UNITTESTOBJ) \
+	rhdut.$(PRESUF)
+	$(F90C) -c $(F90FLAGS) $(UNITTESTFLAGS) \
+	  rhdut.$(PRESUF)
+
+UT_module.o: UT_module.$(PRESUF)
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_UNITT):
+	rm -f $@
+	ln -s $(UNITTSRCPATH)/$@ .
+
+
+# ### SPEC #####################################################################
+
+# --- Libraries ---
+# OBJ_SPEC=spec_demo.o
+SRC_SPEC=spec_demo.F90
+
+# --- Dependencies ---
+
+SPEC: spec_demo.exe
+	sleep 1
+	touch SPEC
+
+# --- Compile only the simple demo version ---
+
+spec_demo.exe: spec_demo.o
+	$(F90C) $(F90FLAGS) -o ${@} \
+	  uio_base_module.o $(UIOMAC).o uio_bulk_module.o uio_filedef_module.o \
+	  gasinter_routines.o \
+	  str_module.o \
+	  timing_module.o \
+	  rhd_gl_module.o const_module.o rhd_action_module.o \
+	    rhd_prop_module.o rhd_box_module.o rhd_io_module.o rhd_sub_module.o \
+	spec_demo.o
+
+#	  opta_par_module.o opta_routines.o opta_dust.o
+
+# --- Dependencies on object files and libraries ---
+
+# spec_demo.o: TIME UIO EOS STR RHDB
+spec_demo.o: \
+	  uio_base_module.o $(UIOMAC).o uio_bulk_module.o uio_filedef_module.o \
+	  gasinter_routines.o \
+	  str_module.o \
+	  timing_module.o \
+	  rhd_gl_module.o const_module.o rhd_action_module.o \
+	    rhd_prop_module.o rhd_box_module.o rhd_io_module.o rhd_sub_module.o \
+	spec_demo.$(PRESUF)
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_SPEC):
+	rm -f $@
+	ln -s $(SPECSRCPATH)/$@ .
+
+
+# ### CONS ####################################################################
+
+# --- Libraries ---
+# OBJ_CON=const_module.o
+SRC_CON=const_module.f90
+
+# --- Dependencies ---
+
+CONS: const_module.o
+	sleep 1
+	touch CONS
+
+const_module.o: const_module.f90
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_CON):
+	rm -f $@
+	ln -s $(CONSRCPATH)/$@ .
+
+
+# ### TIME ####################################################################
+
+# --- Libraries ---
+OBJ_TIME=timing_module.o timing_uio_module.o
+SRC_TIME=timing_module.$(PRESUF) timing_uio_module.$(PRESUF)
+
+# --- Dependencies ---
+
+TIME: timing_module.o timing_uio_module.o
+	sleep 1
+	touch TIME
+
+timing_module.o: timing_module.$(PRESUF)
+
+timing_uio_module.o: UIO timing_module.o \
+	timing_module.$(PRESUF)
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_TIME):
+	rm -f $@
+	ln -s $(TIMESRCPATH)/$@ .
+
+
+# ### UIO #####################################################################
+
+# --- Libraries ---
+OBJ_UIO=uio_base_module.o   uio_filedef_module.o   $(UIOMAC).o	       uio_bulk_module.o
+SRC_UIO=uio_base_module.f90 uio_filedef_module.f90 $(UIOMAC).$(PRESUF) uio_bulk_module.f90
+
+# --- Dependencies ---
+
+UIO: uio_base_module.o uio_filedef_module.o $(UIOMAC).o \
+	uio_bulk_module.o
+	sleep 1
+	touch UIO
+
+uio_base_module.o:    uio_base_module.f90
+$(UIOMAC).o:	      uio_base_module.o $(UIOMAC).$(PRESUF)
+uio_bulk_module.o:    $(UIOMAC).o uio_bulk_module.f90
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_UIO):
+	rm -f $@
+	ln -s $(UIOSRCPATH)/$@ .
+
+
+# ### EOS #####################################################################
+
+# --- Libraries ---
+OBJ_EOS=gasinter_routines.o
+SRC_EOS=gasinter_routines.$(PRESUF)
+
+# --- Dependencies ---
+
+EOS: gasinter_routines.o
+	sleep 1
+	touch EOS
+
+gasinter_routines.o: UIO gasinter_routines.$(PRESUF)
+	$(F90C) -c $(F90FLAGS) $(F90EOSFLAGS) \
+	gasinter_routines.$(PRESUF)
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_EOS):
+	rm -f $@
+	ln -s $(EOSSRCPATH)/$@ .
+
+
+# ### OPTA, CUB ###############################################################
+
+# --- Libraries ---
+OBJ_OPTA=opta_par_module.o   opta_routines.o	     opta_dust.o
+SRC_OPTA=opta_par_module.f90 opta_routines.$(PRESUF) opta_dust.f90
+OBJ_CUB=cubit_module.o
+SRC_CUB=cubit_module.f
+
+# --- Dependencies ---
+
+OPTA: $(OBJ_OPTA)
+	sleep 1
+	touch OPTA
+
+CUB: $(OBJ_CUB)
+	sleep 1
+	touch CUB
+
+opta_routines.o: opta_dust.o opta_par_module.o opta_routines.$(PRESUF)
+
+opta_dust.o: rhd_gl_module.o rhd_prop_module.o opta_dust.f90
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_OPTA):
+	rm -f $@
+	ln -s $(OPTASRCPATH)/$@ .
+
+$(SRC_CUB):
+	rm -f $@
+	ln -s $(OPTASRCPATH)/$@ .
+
+
+# ### STR #####################################################################
+
+# --- Libraries ---
+OBJ_STR=str_module.o
+SRC_STR=str_module.f90 strUT_module.f90
+
+# --- Dependencies ---
+
+STR: str_module.o
+	sleep 1
+	touch STR
+
+strUT_module.o: str_module.o strUT_module.f90
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_STR):
+	rm -f $@
+	ln -s $(STRSRCPATH)/$@ .
+
+
+# ### SYS #####################################################################
+
+# --- Libraries ---
+OBJ_SYS=system_module.o
+SRC_SYS=system_module.$(PRESUF)
+
+# --- Dependencies ---
+
+SYS: system_module.o
+	sleep 1
+	touch SYS
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_SYS):
+	rm -f $@
+	ln -s $(SYSSRCPATH)/$@ .
+
+
+# ### LA #####################################################################
+
+# --- Libraries ---
+OBJ_LA=daxpy.o dcopy.o ddot.o dgbfa.o dgbsl.o dgefa.o dgesl.o dscal.o dswap.o idamax.o
+SRC_LA=daxpy.f90 dcopy.f90 ddot.f90 dgbfa.$(PRESUF) dgbsl.f90 dgefa.$(PRESUF) dgesl.f90 \
+       dscal.f90 dswap.f90 idamax.$(PRESUF)
+
+# --- Dependencies ---
+
+LA: $(OBJ_LA) 
+	sleep 1
+	touch LA
+
+dgefa.o: idamax.o dgefa.$(PRESUF)
+
+dgbfa.o: idamax.o dgbfa.$(PRESUF)
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_LA):
+	rm -f $@
+	ln -s $(LASRCPATH)/$@ .
+
+
+# ### DES #####################################################################
+
+# --- Libraries ---
+OBJ_DES=dvode_module.o 
+SRC_DES=dvode_module.f90
+
+# --- Dependencies ---
+
+DES: $(OBJ_DES) 
+	sleep 1
+	touch DES
+
+dvode_module.o: $(LALIB) dvode_module.f90
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_DES):
+	rm -f $@
+	ln -s $(DESSRCPATH)/$@ .
+
+
+# ### RHDB ####################################################################
+
+# --- Libraries ---
+OBJ_RHDB=rhd_mpi_module.o \
+	 rhd_gl_module.o rhd_prop_module.o rhd_action_module.o \
+	 rhd_box_module.o rhd_wrk_module.o \
+	 rhd_bound_module.o rhd_dat_module.o \
+	 rhd_meankind_module.o rhd_mean_module.o \
+	 rhd_io_module.o rhd_sub_module.o rhd_rec_module.o rhd_phys_module.o
+SRC_RHDB=rhd_mpi_module.$(PRESUF) \
+	 rhd_gl_module.f90 rhd_prop_module.$(PRESUF) rhd_action_module.f90 \
+	 rhd_box_module.$(PRESUF) rhd_wrk_module.f90 rhd_boxUT_module.f90 \
+	 rhd_bound_module.$(PRESUF) rhd_dat_module.$(PRESUF) \
+	 rhd_meankind_module.$(PRESUF) rhd_mean_module.f90 rhd_meanUT_module.f90 \
+	 rhd_io_module.$(PRESUF) rhd_sub_module.f90 rhd_rec_module.f90 rhd_phys_module.f90 \
+	 rhd_recUT_module.f90
+
+# --- Dependencies ---
+
+RHDB: $(OBJ_RHDB)
+	sleep 1
+	touch RHDB
+
+rhd_gl_module.o:     rhd_gl_module.f90
+
+rhd_action_module.o: rhd_action_module.f90
+
+rhd_prop_module.o:   rhd_action_module.o rhd_prop_module.$(PRESUF)
+
+rhd_rec_module.o:    rhd_gl_module.o rhd_action_module.o \
+		     rhd_rec_module.f90
+
+rhd_recUT_module.o:  const_module.o UT_module.o rhd_gl_module.o rhd_action_module.o \
+		     rhd_rec_module.o \
+		     rhd_recUT_module.f90
+
+rhd_box_module.o:    rhd_gl_module.o rhd_action_module.o rhd_prop_module.o \
+		     rhd_box_module.$(PRESUF)
+
+rhd_boxUT_module.o:  UT_module.o rhd_gl_module.o rhd_action_module.o rhd_box_module.o \
+		     rhd_bound_module.o rhd_boxUT_module.f90
+
+rhd_wrk_module.o:    rhd_box_module.$(PRESUF) rhd_wrk_module.f90
+
+rhd_bound_module.o:  CONS EOS TIME rhd_gl_module.o rhd_action_module.o rhd_prop_module.o \
+		     rhd_box_module.o rhd_mpi_module.o \
+		     rhd_bound_module.$(PRESUF)
+
+rhd_phys_module.o:   CONS rhd_gl_module.o rhd_action_module.o rhd_box_module.o \
+		     rhd_phys_module.f90
+
+rhd_meankind_module.o: rhd_meankind_module.$(PRESUF)
+
+rhd_mean_module.o:   rhd_box_module.o rhd_meankind_module.o \
+		     rhd_mean_module.f90
+
+rhd_meanUT_module.o: UT_module.o rhd_meankind_module.o rhd_mean_module.o rhd_box_module.o \
+		     rhd_meanUT_module.f90
+
+rhd_io_module.o:     UIO rhd_prop_module.o rhd_io_module.$(PRESUF)
+
+rhd_sub_module.o:    CONS UIO \
+		     rhd_gl_module.o rhd_action_module.o rhd_box_module.o rhd_io_module.o \
+		     rhd_sub_module.f90
+
+rhd_dat_module.o:    CONS UIO OPTA \
+		     rhd_gl_module.o rhd_prop_module.o rhd_box_module.o rhd_meankind_module.o \
+		     rhd_dat_module.$(PRESUF)
+
+rhd_mpi_module.o:    TIME \
+		     rhd_gl_module.o rhd_action_module.o rhd_prop_module.o rhd_box_module.o \
+		     rhd_io_module.o rhd_sub_module.o \
+		     rhd_mpi_module.$(PRESUF)
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_RHDB):
+	rm -f $@
+	ln -s $(RHDBSRCPATH)/$@ .
+
+
+# ### RAD #####################################################################
+
+# --- Libraries ---
+OBJ_RAD=rhd_lcfrad_module.o LCFrad.o rhd_mscrad_module.o MSCrad.o
+SRC_RAD=rhd_lcfrad_module.$(PRESUF) LCFrad.$(PRESUF) rhd_mscrad_module.$(PRESUF) MSCrad.$(PRESUF)
+
+RAD: $(OBJ_RAD)
+	sleep 1
+	touch RAD
+
+# --- Dependencies ---
+
+rhd_lcfrad_module.o: CONS TIME EOS OPTA RHDB $(CHEMLIB) $(KROMELIB) \
+		  LCFrad.o \
+		  rhd_lcfrad_module.$(PRESUF)
+
+LCFrad.o:	 OPTA \
+		  LCFrad.$(PRESUF)
+
+rhd_mscrad_module.o: CONS TIME EOS OPTA RHDB $(CHEMLIB) $(KROMELIB) \
+		  MSCrad.o \
+		  rhd_mscrad_module.$(PRESUF)
+
+MSCrad.o:	 OPTA \
+		  MSCrad.$(PRESUF)
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_RAD):
+	rm -f $@
+	ln -s $(RADSRCPATH)/$@ .
+
+
+# ### CHEM ####################################################################
+
+# --- Libraries ---
+OBJ_CHEM=chem_rn_module.o
+SRC_CHEM=chem_rn_module.$(PRESUF)
+
+# --- Dependencies ---
+
+CHEM: $(OBJ_CHEM)
+	sleep 1
+	touch CHEM
+
+chem_rn_module.o: EOS DES $(SRC_CHEM) chem_rn_module.$(PRESUF)
+
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_CHEM):
+	rm -f $@
+	ln -s $(CHEMSRCPATH)/$@ .
+
+
+# ### KROME ####################################################################
+
+# --- Libraries ---
+OBJ_KROME=opkda2.o opkda1.o opkdmain.o krome_user_commons.o krome_all.o krome_rn_module.o
+SRC_KROME=opkda2.f opkda1.f opkdmain.f krome_user_commons.$(PRESUF) krome_all.$(PRESUF) krome_rn_module.$(PRESUF)
+
+# --- Dependencies ---
+
+KROME: $(OBJ_KROME)
+	sleep 1
+	touch KROME
+
+opkda2.o: $(SRC_KROME) opkda2.f
+opkda1.o: $(SRC_KROME) opkda1.f
+opkdamain.o: $(SRC_KROME) opkdamain.f
+krome_user_commons.o: $(SRC_KROME) krome_user_commons.$(PRESUF)
+krome_all.o: $(SRC_KROME) krome_all.$(PRESUF)
+krome_rn_module.o: EOS DES $(SRC_KROME) krome_rn_module.$(PRESUF)
+
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_KROME):
+	rm -f $@
+	ln -s $(KROMESRCPATH)/$@ .
+
+
+# ### HION ###################################################################
+
+# --- Libraries ---
+OBJ_HION = hion_def_module.o hion_io_module.o hion_util_module.o hion_dvode_module.o \
+	   edens_module.o hion_main_module.o
+SRC_HION = hion_def_module.f90 hion_io_module.f90 hion_util_module.f90 hion_dvode_module.f90 \
+	   edens_module.f90 hion_main_module.f90
+
+# --- Dependencies ---
+
+HION: $(OBJ_HION)
+	sleep 1
+	touch HION
+
+hion_def_module.o: hion_def_module.f90	
+
+hion_io_module.o: hion_io_module.f90 hion_def_module.o UIO
+
+hion_util_module.o: hion_io_module.o hion_def_module.o hion_util_module.f90
+
+hion_main_module.o: EOS DES hion_main_module.f90 hion_util_module.o \
+		     hion_def_module.o hion_io_module.o hion_dvode_module.o edens_module.o
+
+hion_dvode_module.o: DES $(DESLIB) hion_dvode_module.f90
+
+edens_module.o: edens_module.f90
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_HION):
+	rm -f $@
+	ln -s $(HIONSRCPATH)/$@ .
+
+# ### DUST ####################################################################
+
+# --- Libraries ---
+OBJ_DUST=rhd_source_module.o rhd_dust_module.o dust_k3mon_module.o dust_momentc2_module.o \
+	 dust_al2o3agb_module.o dust_mg2sio4agb_module.o dust_bins_module.o \
+	 $(CHEMOBJ) $(KROMEOBJ) $(HIONOBJ)
+SRC_DUST=C2.INC C2H.INC C2H2.INC CHPAR_CT.INC H2.INC DKSPLINT.INC DINDEX.INC \
+	 rhd_source_module.$(PRESUF) rhd_dust_module.$(PRESUF) dust_k3mon_module.f \
+	 dust_momentc2_module.f dust_al2o3agb_module.f dust_al2o3agbUT_module.f90 \
+	 dust_mg2sio4agb_module.f dust_mg2sio4agbUT_module.f90 dust_bins_module.f90
+
+# --- Dependencies ---
+
+DUST: $(OBJ_DUST)
+	sleep 1
+	touch DUST
+
+dust_al2o3agbUT_module.o: dust_al2o3agb_module.o dust_al2o3agbUT_module.f90
+
+dust_mg2sio4agbUT_module.o: dust_mg2sio4agb_module.o dust_mg2sio4agbUT_module.f90
+
+dust_k3mon_module.o: CONS RHDB dust_k3mon_module.f
+
+dust_momentc2_module.o: CONS C2.INC C2H.INC C2H2.INC CHPAR_CT.INC DKSPLINT.INC H2.INC DINDEX.INC \
+		   dust_momentc2_module.f 
+
+dust_al2o3agb_module.o: dust_al2o3agb_module.f
+
+dust_mg2sio4agb_module.o: dust_mg2sio4agb_module.f
+
+dust_bins_module.o: EOS RHDB CONS dust_bins_module.f90
+
+rhd_dust_module.o: TIME EOS RHDB CONS $(CHEMLIB) $(KROMELIB) $(HIONLIB) \
+		   DINDEX.INC \
+		   dust_k3mon_module.o \
+		   dust_momentc2_module.o dust_al2o3agb_module.o dust_mg2sio4agb_module.o \
+		   dust_bins_module.o \
+		   rhd_dust_module.$(PRESUF)
+
+rhd_source_module.o: TIME EOS RHDB CONS $(CHEMLIB) $(KROMELIB) $(HIONLIB) \
+		   DINDEX.INC \
+		   dust_k3mon_module.o \
+		   dust_momentc2_module.o dust_al2o3agb_module.o dust_mg2sio4agb_module.o \
+		   dust_bins_module.o \
+		   rhd_dust_module.o \
+		   rhd_source_module.$(PRESUF)
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_DUST):
+	rm -f $@
+	ln -s $(DUSTSRCPATH)/$@ .
+
+
+# ### MHD #####################################################################
+
+# --- Libraries ---
+OBJ_MHD=rhd_mhd_module.o
+SRC_MHD=rhd_mhd_module.$(PRESUF)
+
+# --- Dependencies ---
+
+MHD: $(OBJ_MHD)
+	sleep 1
+	touch MHD
+
+rhd_mhd_module.o: CONS TIME EOS RHDB \
+		   rhd_mhd_module.$(PRESUF)
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_MHD):
+	rm -f $@
+	ln -s $(MHDSRCPATH)/$@ .
+
+
+# ### TWEAK #####################################################################
+
+# --- Libraries ---
+OBJ_TWEAK=rhd_tweak_module.o rhd_scale_module.o
+SRC_TWEAK=rhd_tweak_module.$(PRESUF)
+SRC_SCALE=rhd_scale_module.$(PRESUF)
+
+# --- Dependencies ---
+
+TWEAK: $(OBJ_TWEAK)
+	sleep 1
+	touch TWEAK
+
+rhd_tweak_module.o: CONS TIME EOS RHDB \
+		    rhd_tweak_module.$(PRESUF)
+
+rhd_scale_module.o: CONS TIME EOS RHDB \
+		    rhd_scale_module.$(PRESUF)
+
+# --- Make link for source files from source directory into current directory --
+$(SRC_TWEAK):
+	rm -f $@
+	ln -s $(TWEAKSRCPATH)/$(TWEAKSRC).$(PRESUF) $@
+$(SRC_SCALE):
+	rm -f $@
+	ln -s $(TWEAKSRCPATH)/$@ .
+
+
+# #############################################################################
+
+# === Cleaning up =============================================================
+
+# --- Remove core, object and all module-information files ---
+clean:
+	rm -f core CONS DUST EOS MHD TWEAK OPTA CUB RAD RHD RHDB STR SYS LA DES HION TIME UIO SPEC \
+	*.o *.M *.mod *.kmo *.d *.oo
+
+cleanall: clean
+
+remove: clean
+	rm -f rhd.exe rhdut.exe spec_demo.exe
+
+removeall: remove
+	rm -f *.*90 *.f *.F *.inc *.INC
+
+EOF
+echo -e ${ColorMess}"New${ColorNo} Makefile${ColorMess} written.........................................."${ColorNo}
+#
