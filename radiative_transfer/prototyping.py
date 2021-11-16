@@ -18,7 +18,21 @@ from itertools import product
 
 k_b = 1.3806503e-23  # [m^2 kg s^-2 K^-1]
 sigma = 5.670367e-8  # [W m^-2 K^-4]
+np.random.seed(42)
 
+
+class Photon:
+	def __init__(self, grid: np.ndarray, position=None, direction=None) -> None:
+		lower = np.array([grid[0, 0, 0, i] for i in range(0, 3)])
+		upper = np.array([grid[-1, -1, -1, i] for i in range(0, 3)])
+		if not position:
+			position = np.array([np.random.uniform(l, u) for l, u in zip(lower, upper)])
+		if not direction:
+			direction = np.random.random(size=3)
+			direction /= np.linalg.norm(direction)
+			
+		self.position = position
+		self.direction = direction
 
 def sample_tau():
 	# exact inversion of probability P(tau) = 1 - e^(-tau)
@@ -49,8 +63,8 @@ def optical_depth_in_cell(density: float, opacity: float, distance: float):
 def create_grid(x_limits=(-5., 5.),
                 y_limits=(-5., 5.),
                 z_limits=(0., 20.),
-                n_x_points=10,
-                n_y_points=10,
+                n_x_points=20,
+                n_y_points=20,
                 n_z_points=20):
 	x = np.linspace(*x_limits, num=n_x_points)
 	y = np.linspace(*y_limits, num=n_y_points)
@@ -64,8 +78,10 @@ def determine_grid_spacing(grid: np.ndarray):
 def cell_from_position(grid: np.ndarray, position: np.ndarray):
 	# get coords of cell 'position' is in on 'grid'
 	n = grid.shape[:3]
-	extents = np.array([grid[-1, -1, -1, i] for i in range(0, 3)])
-	cell_idx = tuple(map(int, position * n / extents))
+	# Shift by 'lower' value to make it grid-agnostic
+	lower = np.array([grid[0, 0, 0, i] for i in range(0, 3)])
+	upper = np.array([grid[-1, -1, -1, i] for i in range(0, 3)])
+	cell_idx = tuple(map(int, (position - lower) * n / (upper - lower)))
 
 	return cell_idx
 
@@ -75,11 +91,12 @@ def main():
 
 	# isotropic density grid
 	density = np.zeros(shape=(1, *grid.shape[1:]))
-	photon_position = np.array([-3., -2., 3.])
-	photon_direction = np.array([2., 1., 4.])
-	photon_direction /= np.linalg.norm(photon_direction)
 
-	# plot grid and photon
+	# Random photons
+	num_photons = 3
+	photons = [Photon(grid) for i in range(num_photons)]
+
+	# plot grid
 	fig = plt.figure(figsize=(12, 12))
 	ax = plt.axes(projection ='3d')
 	x, y, z = grid[:, 0, 0, 0], grid[0, :, 0, 1], grid[0, 0, :, 2]
@@ -87,20 +104,15 @@ def main():
 	ax.plot3D(*zip(*points), c='gray', marker='.', ls='none')
 	# origin
 	ax.plot3D([0.], [0.], [5.], 'kx')
-	pos = [[p] for p in photon_position]
-	ax.plot(*pos, 'ro')
-	ax.quiver(*photon_position, *photon_direction, color='r')
-	# TODO:
-	# Fix index-finding, also figure out how to slice better with the index
-	idx = cell_from_position(grid, photon_position)
-	photon_grid_pos = grid[idx]
-	print(photon_position)
-	print(idx)
-	print(photon_grid_pos)
-	true_idx = (2, 3, 3)
-	print(grid[true_idx])
-	ax.plot3D([photon_grid_pos[0]], [photon_grid_pos[1]], [photon_grid_pos[2]], 'gs')
-	
+
+	# Plot photons
+	for photon in photons:
+		pos = [[p] for p in photon.position]
+		ax.plot(*pos, 'ro')
+		ax.quiver(*photon.position, *photon.direction, color='r')
+		idx = cell_from_position(grid, photon.position)
+		photon_grid_pos = grid[idx]
+		ax.plot3D([photon_grid_pos[0]], [photon_grid_pos[1]], [photon_grid_pos[2]], 'gs')
 
 	plt.show()
 
