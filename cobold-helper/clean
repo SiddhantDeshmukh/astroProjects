@@ -1,0 +1,3 @@
+#!/bin/bash
+# Remove intermittent files (rhd.*) while leaving 'rhd.stop', 'rhd.start'
+rm */d*t*g*mm*.o1*

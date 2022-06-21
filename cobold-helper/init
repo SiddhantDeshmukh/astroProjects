@@ -1,0 +1,176 @@
+#!/bin/bash
+# Set up a new run provided an ID
+# Just copies all the files from outer directories to 'runs'
+# Assumes the start, par files exist for the given ID
+# Copies 'template.{cmd,job}' and renames template > model ID
+# Does NOT change 'chem.dat', this must still
+# be edited manually for chem runs
+if [ $# -eq 0 ]
+then
+	echo "Error: Must provide at least a  model ID with -m and a start model with -s."
+	echo "E.g. './init.sh -m d2t57g44mm00 -s ../start/d2t57g44mm00.start'"
+	exit
+fi
+
+while test $# -gt 0; do
+  case "$1" in
+    -h|--help)
+      echo "options:"
+      echo "-h, --help                show brief help"
+      echo "-m, --model               model ID, key for output"
+      echo "-e, --exe=EXE             specify executable to use"
+      echo "-s, --start=START         specify start model"
+      echo "-c                        chemical network file"
+      echo "-p, --par=PAR             parameter file"
+      echo "--single                  create cmd for a single run"
+      exit 0
+      ;;
+    -m)
+      shift
+      if test $# -gt 0; then
+        model_id=$1
+      else
+        echo "No model ID specified."
+        exit 1
+      fi
+      shift
+      ;;
+    --model*)
+      model_id=`echo $1 | sed -e 's/^[^=]*=//g'`
+      shift
+      ;;
+    -e)
+      shift
+      if test $# -gt 0; then
+        exe=$1
+      else
+        echo "No exe specified"
+      fi
+      shift
+      ;;
+    --exe*)
+      exe=`echo $1 | sed -e 's/^[^=]*=//g'`
+      shift
+      ;;
+    -s)
+      shift
+      if test $# -gt 0; then
+        start_model=$1
+      else
+        echo "No start model specified."
+	exit 1
+      fi
+      shift
+      ;;
+    --start*)
+      start_model=`echo $1 | sed -e 's/^[^=]*=//g'`
+      shift
+      ;;
+    -c)
+      shift
+      if test $# -gt 0; then
+        chem_file=$1
+      else
+        chem_file=
+      fi
+      shift
+      ;;
+    -p)
+      shift
+      if test $# -gt 0; then
+        par=$1
+      else
+        echo "No exe specified"
+      fi
+      shift
+      ;;
+    --par*)
+      par=`echo $1 | sed -e 's/^[^=]*=//g'`
+      shift
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+COBOLD_DIR=/home/sd/cobold
+WRK_DIR=$COBOLD_DIR/wrk  # holds scripts
+EOS_DIR=/home/sd/eos
+OPTA_DIR=/home/sd/opta
+RUN_DIR=$WRK_DIR/$model_id  # where the model is run from
+LX41_DIR=/lx41/sd/cobold
+SAV_DIR=$LX41_DIR/runs/open/$model_id  # to copy to lx41
+
+# Create directories if necessary
+mkdir -p $SAV_DIR
+mkdir -p $RUN_DIR
+
+# Copy files and rename templates
+# Start model and parameter file must exist
+cp $start_model $RUN_DIR/rhd.start
+# Find par file on lx41
+#parfile=$(find $LX41_DIR/par/ -maxdepth 2 -name $model_id.par)  # from model
+parfile=$(find $LX41_DIR/par -maxdepth 2 -name $par.par)  # independent
+
+cp $parfile $RUN_DIR/rhd.par
+
+# Copy templates
+cp $LX41_DIR/cmd/template.cmd $RUN_DIR/cobold.cmd
+cp $COBOLD_DIR/job/template.job $RUN_DIR/cobold.job
+
+# Copy chem file if present
+if [ ! -z $chem_file ]
+then
+  cp $chem_file $RUN_DIR/chem.dat
+fi
+
+# Edit template cmd and job file, replacing 'template' with 'model_id'
+old="template"
+sed -i "s/$old/$model_id/g" $RUN_DIR/cobold.cmd
+sed -i "s/$old/$model_id/g" $RUN_DIR/cobold.job
+
+# Copy exe
+cp $exe $RUN_DIR/rhd.exe
+
+# Check for --single option to edit 'cmd' file for 1 run
+while [ ! $# -eq 0 ]
+do
+  case "$1" in
+    --single)
+      sed -ni 's/doc/eoc/;1p;' $RUN_DIR/cobold.cmd
+      ;;
+  esac
+  shift
+done
+
+# Copy files to save directory on lx41
+# par
+cp $RUN_DIR/rhd.par $SAV_DIR
+# EOS
+eos_file=$(grep ".*\.eos" $RUN_DIR/rhd.par | tail -1)
+cp $EOS_DIR/$eos_file $SAV_DIR
+# OPTA
+opta_file=$(grep ".*\.opta" $RUN_DIR/rhd.par | tail -1)
+cp $OPTA_DIR/$opta_file $SAV_DIR
+# Start
+cp $RUN_DIR/rhd.start $SAV_DIR
+# chemistry file
+if [ ! -z  "$chem_file" ]
+then
+  cp $RUN_DIR/chem.dat $SAV_DIR
+fi
+
+# Print to terminal to make sure it worked
+find . -name $model_id -type d 
+head -1 $RUN_DIR/cobold.cmd
+tail -2 $RUN_DIR/cobold.cmd
+grep 'IDDIR' $RUN_DIR/cobold.job | head -1
+
+# Change permissions so runs are accessible
+#chmod -R a+rw $SAV_DIR
+
+echo "Check above statements to see if it's correct!"
+echo "If using CHEM, ensure the supplied start model has correct abundances!"
+echo "If using CHEM, ensure 'chem.dat' is the correct network!"
+echo "Provide correct 'rhd.exe' from 'exe' dir if you want to change it!"
