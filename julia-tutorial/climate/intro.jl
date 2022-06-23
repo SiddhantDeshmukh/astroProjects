@@ -33,6 +33,7 @@ absorbed_solar_radiation(; α=α, S=S) = S * (1-α)/4;  # [W / m^2]
 # We set a pre-industrial equilibrium temperature (equating incoming and
 # outgoing radiation without greenhouse effects) at
 T0 = 14.  # [C]
+CO2_PI = 280.  # pre-industrial CO2
 
 # To simplify the expression, let's define
 # A == G(T_0) - T_0 * G'(T_0)
@@ -116,4 +117,7 @@ function run!(model::Model, end_year::Real)
   end
 end
 
-run!(model) = run!(model, 200.)  # run for 200 years by default
+run!(model) = run!(model, 200.);  # run for 200 years by default
+
+## Let's see what happens with various CO2 functions
+CO2_const(t) = CO2_PI;  # constant
